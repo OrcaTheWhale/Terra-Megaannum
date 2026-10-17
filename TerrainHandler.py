@@ -28,8 +28,7 @@ class FastTerrain(Entity):
         triangles = np.stack([a, b, c, c, e, a], axis=-1).astype(np.uint32).ravel()
         #recalculating
         self._fill(heights)
-        mesh = Mesh(vertices=self._verts.ravel(), triangles=triangles, uvs=uvs,
-                    normals=self._normals.ravel(), static=False)
+        mesh = Mesh(vertices=self._verts.ravel(), triangles=triangles, uvs=uvs, normals=self._normals.ravel(), static=False)
         super().__init__(model=mesh, **kwargs)
 
     def _fill(self, heights):

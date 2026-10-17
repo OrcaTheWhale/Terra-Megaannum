@@ -1,0 +1,5 @@
+ursina
+numpy
+matplotlib
+pyserial
+scipy
