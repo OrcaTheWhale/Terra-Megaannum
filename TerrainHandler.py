@@ -1,6 +1,6 @@
 import numpy as np
 from ursina import Entity, Mesh
-
+slope_degrees : float
 #script to abandon ursina's built in builder; it checks in a for loop, this checks in NumPy to increase speed and calculations
 
 class FastTerrain(Entity):
@@ -38,6 +38,7 @@ class FastTerrain(Entity):
         #each point has a "normal", in which the direction it faces. Measure the slope everywhere to find where it points to the sun:
         #gradient returns the slope by getting the x and z axis, which takes the next value, and takes n2-n1 / 2 for the slope.
         gz, gx = np.gradient(h, 1 / (self.d - 1), 1 / (self.w - 1))
+        self.slope_degrees = np.degrees(np.arctan(np.sqrt((gx * 10 / 35) ** 2 + (gz * 10 / 35) ** 2))) # convert the slope to degrees, and scale it to the terrain's scale, so that the slope is accurate to the terrain's scale. The 10/35 is the y/x ratio of the terrain's scale.
         n = self._normals
         #turn the slope into arrows
         #rising x (+), and leaning toward -x

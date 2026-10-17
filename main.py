@@ -19,6 +19,7 @@ import config
 from sensors import SensorReader
 from simulation import Simulation
 from TerrainHandler import FastTerrain
+from terrain_shader import terrain_shader
 from ui import ControlPanel, hud_text
 
 app = Ursina(title='Math Hacks 2.0', development_mode=False)
@@ -30,11 +31,28 @@ print("terrain size:", original.shape)
 print("graphics:", base.win.gsg.driver_renderer)
 
 sim = Simulation(original)
-
 sensors = SensorReader(config.SENSOR_PORT)     # reads the ESP32 in the background
 sensors.start()
 
-world = FastTerrain(original, texture=config.TEXTURE, scale=config.SCALE, double_sided=True)
+world = FastTerrain(
+    original,
+    scale=config.SCALE,
+    double_sided=True,
+    shader=terrain_shader,
+)
+world.set_shader_input(
+    "grass_tex",
+    load_texture("textures/Grass002_2K-PNG/Grass002_2K-PNG_Color.png"),
+)
+world.set_shader_input(
+    "rock_tex",
+    load_texture("textures/Rock050_2K-PNG/Rock050_2K-PNG_Color.png"),
+)
+world.set_shader_input(
+    "snow_tex",
+    load_texture("textures/Snow010A_2K-PNG/Snow010A_2K-PNG_Color.png"),
+)
+
 ghost = FastTerrain(original, scale=config.SCALE, wireframe=True,
                     color=color.rgba(1, 1, 1, 0.35), enabled=False)
 
