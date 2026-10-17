@@ -1,4 +1,5 @@
 from ursina import *
+import procedural_noise as pn
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -10,8 +11,8 @@ from TerrainHandler import FastTerrain
 # development_mode=False turns off Ursina's debug extras (hot reloading etc.), which saves time every frame
 app = Ursina(title='Math Hacks 2.0', development_mode=False)
 
-heightmap = "Height Map PNG.png"
-texture = "Texture PNG.png"
+heightmap = "assets/generated_heightmap.png"
+texture = "assets/Texture PNG.png"
 skip = 4
 scale = (35, 35, 35)
 
@@ -23,6 +24,7 @@ print("terrain size:", heights.shape)
 print("graphics:", base.win.gsg.driver_renderer)     # which GPU Ursina is drawing with
 
 # FastTerrain: rebuilding the Terrain much faster
+pn.create_heightmap()
 world = FastTerrain(heights, texture=texture, scale=scale, double_sided=True)
 
 ghost = FastTerrain(original, scale=scale, wireframe=True,
