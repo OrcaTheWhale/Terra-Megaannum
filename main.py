@@ -1,35 +1,37 @@
+"""
+main.py - starts the app and runs the main loop. Run:  python main.py
+
+Where things live:
+    config.py        settings and numbers
+    conditions.py    the physics (soil creep; add rain, wind... here)
+    climate.py       seasons and temperature
+    simulation.py    time, steps, history, looking back
+    analysis.py      scores, likelihood, charts and maps
+    ui.py            control panel and information text
+    TerrainHandler.py  fast 3D drawing
+"""
+
 from ursina import *
-import procedural_noise as pn
-import numpy as np
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+
+import analysis
+import climate
+import config
+from simulation import Simulation
 from TerrainHandler import FastTerrain
+from ui import ControlPanel, hud_text
 
-#to do: add a frame stepper, to check what it would look like in 10days / 10 years / 100 years, and to go back and compare
-
-# development_mode=False turns off Ursina's debug extras (hot reloading etc.), which saves time every frame
 app = Ursina(title='Math Hacks 2.0', development_mode=False)
 
-heightmap = "assets/generated_heightmap.png"
-texture = "assets/Texture PNG.png"
-skip = 4
-scale = (35, 10, 35)
+# ---------------------------------------------------------------- load the terrain once
+start = Terrain(heightmap=config.HEIGHTMAP, skip=config.SKIP)
+original = start.height_values.astype(float)       # decimals, so small changes aren't lost
+print("terrain size:", original.shape)
+print("graphics:", base.win.gsg.driver_renderer)
 
-# load the PNG once, then convert to decimals for changes
-start = Terrain(heightmap=heightmap, skip=skip)
-heights = start.height_values.astype(float)
-original = heights.copy()
-print("terrain size:", heights.shape)
-print("graphics:", base.win.gsg.driver_renderer)     # which GPU Ursina is drawing with
+sim = Simulation(original)
 
-# FastTerrain: rebuilding the Terrain much faster
-def generate_world():
-    pn.create_heightmap()
-    world = FastTerrain(heights, texture=texture, scale=scale, double_sided=True)
-generate_world()
-
-ghost = FastTerrain(original, scale=scale, wireframe=True,
+world = FastTerrain(original, texture=config.TEXTURE, scale=config.SCALE, double_sided=True)
+ghost = FastTerrain(original, scale=config.SCALE, wireframe=True,
                     color=color.rgba(1, 1, 1, 0.35), enabled=False)
 
 camera.position = (0, 0, -110)
@@ -37,97 +39,151 @@ orbit = EditorCamera()
 orbit.smoothing_helper.rotation_x = 50
 info = Text(position=window.top_left + Vec2(0.02, -0.02))
 
-
-#Rebuilding
-def redraw():
-    world.set_heights(heights)
-
-
-#averages all the heights of nearest soil, and ensures no soil gets removed or lost
-def soil_creep(h, rate=0.2):
-    #make sure the edges have neighbours, then compare each
-    p = np.pad(h, 1, mode='edge')      
-    up    = p[:-2, 1:-1]               # every point's neighbour above
-    down  = p[2:,  1:-1]               # ...below
-    left  = p[1:-1, :-2]               # ...left
-    right = p[1:-1, 2:]                # ...right
-    #get average of height
-    average = (up + down + left + right) / 4
-    #new height to send to redraw
-    return h + rate * (average - h)
-
-
-#saving the map to compare differences
-def save_change_map():
-    #showing the change in red = lost, blue = gain
-    change = heights - original
-    #avoid divide by 0
-    biggest = abs(change).max() or 1   
-    plt.imshow(change, cmap='RdBu', vmin=-biggest, vmax=biggest)
-    plt.colorbar(label='height change')
-    plt.title('Red = soil lost, blue = soil gained')
-    plt.savefig('change_map.png')
-    plt.close()
-    print('saved change_map.png')
-
-
+# ---------------------------------------------------------------- state
 running = False
+view_step = None             # None = showing the latest step; a number = looking back
 showing_original = False
 steps_per_frame = 1
 redraw_timer = 0
 hud_timer = 0
+likelihood_score = None
+spread = None
+runs_used = 0
 
 
+def shown_step():
+    return sim.step if view_step is None else view_step
+
+
+def shown_heights():
+    return sim.heights if view_step is None else sim.heights_at(view_step)
+
+
+def show(h):
+    world.set_heights(h)
+
+
+# ---------------------------------------------------------------- actions
+def toggle_running():
+    global running, view_step, likelihood_score
+    if running:
+        running = False
+        return
+    if view_step is not None and view_step < sim.step:
+        sim.rewind_to(view_step)          # continue from the step we're looking at
+        print(f'continuing from step {sim.step}')
+    view_step = None
+    if sim.step >= panel.target:
+        show(sim.heights)
+        return                            # already reached the target
+    likelihood_score = None               # the result is about to change
+    running = True
+
+
+def step_view(amount):
+    global view_step, running
+    running = False
+    new_step = max(0, min(sim.step, shown_step() + amount))
+    view_step = None if new_step == sim.step else new_step
+    show(shown_heights())
+
+
+def reset():
+    global running, view_step, likelihood_score, spread
+    sim.reset()
+    running = False
+    view_step = None
+    likelihood_score = None
+    spread = None
+    show(sim.heights)
+
+
+def check_likelihood():
+    global likelihood_score, spread, runs_used
+    if sim.step == 0:
+        print('nothing simulated yet')
+        return
+    likelihood_score, spread, runs_used = analysis.likelihood(sim)
+
+
+panel = ControlPanel(on_start_pause=toggle_running, on_reset=reset,
+                     on_prev=lambda: step_view(-1), on_next=lambda: step_view(1),
+                     on_likelihood=check_likelihood)
+
+
+# ---------------------------------------------------------------- keys
 def input(key):
-    global running, showing_original, steps_per_frame
+    global showing_original, steps_per_frame
     if key == 'space':
-        running = not running
+        toggle_running()
+    elif key == 'r':
+        reset()
+    elif key in ('left arrow', 'left arrow hold'):
+        step_view(-1)
+    elif key in ('right arrow', 'right arrow hold'):
+        step_view(1)
+    elif key == 'l':
+        check_likelihood()
     elif key == 'o':
         showing_original = True
-        world.set_heights(original)
+        show(original)
     elif key == 'o up':
         showing_original = False
-        redraw()
+        show(shown_heights())
     elif key == 'g':
         ghost.enabled = not ghost.enabled
     elif key == 'm':
-        save_change_map()
-    elif key == '1':
-        steps_per_frame = 1
-    elif key == '2':
-        steps_per_frame = 5
-    elif key == '3':
-        steps_per_frame = 20
+        analysis.save_change_map(shown_heights(), original, f'Step {shown_step()}')
+    elif key == 'c':
+        analysis.save_history_chart(sim.history)
+    elif key == 'u':
+        analysis.save_uncertainty_map(spread, likelihood_score or 0)
+    elif key in ('1', '2', '3'):
+        steps_per_frame = {'1': 1, '2': 5, '3': 20}[key]
 
 
-
+# ---------------------------------------------------------------- main loop
 def update():
-    global heights, redraw_timer, hud_timer
+    global running, redraw_timer, hud_timer
+
     if running:
         for i in range(steps_per_frame):
-            heights = soil_creep(heights)
+            if sim.step >= panel.target:          # reached the chosen number of steps
+                running = False
+                check_likelihood()                # score the final result automatically
+                break
+            sim.advance(panel.step_days, panel.enabled())
 
-        #rebuild
         redraw_timer += time.dt
         if redraw_timer > 0.1 and not showing_original:
-            redraw()
+            show(sim.heights)
             redraw_timer = 0
 
     hud_timer += time.dt
     if hud_timer > 0.3:
         hud_timer = 0
-        #counting the total soil that moved off of high spots
-        lost = (original - heights).clip(min=0).sum()
+        step = shown_step()
+        h = shown_heights()
+        land_changed, soil_moved = analysis.change_scores(h, original)
+        sea_temp = sim.sea_temp_at(step)
 
-        info.text = (
-            f"{'RUNNING' if running else 'PAUSED'}   speed {steps_per_frame}"
-            f"{'   SHOWING ORIGINAL' if showing_original else ''}\n"
-            f"Space start/pause | hold O original | G ghost | M change map | 1 2 3 speed\n"
-            f"Total soil:    {heights.sum():,.0f}  (should never change)\n"
-            f"Soil moved:    {lost:,.0f}\n"
-            f"Highest point: {heights.max():.1f}   (was {original.max():.1f})\n"
-            f"Lowest point:  {heights.min():.1f}   (was {original.min():.1f})\n"
-            f"Roughness:     {heights.std():.2f}   (was {original.std():.2f})")
+        if running:
+            status = 'RUNNING'
+        elif view_step is not None:
+            status = 'LOOKING BACK'
+        elif sim.step >= panel.target:
+            status = 'FINISHED'
+        else:
+            status = 'PAUSED'
+
+        info.text = hud_text(
+            status=status, step=step, latest_step=sim.step, target=panel.target,
+            unit=panel.unit, days=sim.days_at(step), sea_temp=sea_temp,
+            below_zero=climate.freezing_fraction(h, sea_temp) * 100,
+            enabled=panel.enabled(),
+            scores=(land_changed, soil_moved, h.sum(), h.std(), original.std()),
+            likelihood=likelihood_score, runs=runs_used, speed=steps_per_frame,
+            showing_original=showing_original)
 
 
 app.run()
