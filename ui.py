@@ -69,10 +69,14 @@ def date_text(days):
 
 
 def hud_text(status, step, latest_step, target, unit, days, sea_temp, below_zero,
-             enabled, scores, likelihood, runs, speed, showing_original):
+             enabled, scores, likelihood, runs, speed, showing_original, sensor_lines,
+             likelihood_progress=None):
     land_changed, soil_moved, total_soil, roughness, original_roughness = scores
     looking_back = f'   (latest: {latest_step})' if step != latest_step else ''
-    if likelihood is None:
+    if likelihood_progress is not None:
+        done, total = likelihood_progress
+        likely = f'Likelihood: calculating... {done}/{total} runs'
+    elif likelihood is None:
         likely = 'Likelihood: (press L, or finish the run)'
     else:
         likely = (f'Likelihood of the step {latest_step} result: {likelihood:.0f}%  '
@@ -84,6 +88,8 @@ def hud_text(status, step, latest_step, target, unit, days, sea_temp, below_zero
         f"{date_text(days)}   Sea level {sea_temp:.1f} C   Below freezing: {below_zero:.0f}% of map\n"
         f"Active: {', '.join(enabled) if enabled else 'none'}\n"
         f"Space start/pause | R reset | Left/Right look back | L likelihood | O G M C U views | 1 2 3 speed\n"
+        f"Up/Down warmer/colder | Z re-zero temperature sensor\n"
+        f"{sensor_lines}\n"
         f"{likely}\n"
         f"Land changed:  {land_changed:.1f}%\n"
         f"Soil moved:    {soil_moved:.2f}%\n"

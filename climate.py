@@ -16,6 +16,10 @@ from config import AVG_TEMP_C, SEASON_SWING_C, WARMEST_DAY, MIN_ELEVATION_M, MAX
 LAPSE_RATE = 6.5 / 1000      # air gets about 6.5 C colder per 1000 m higher
 YEAR = 365
 
+# Extra degrees on top of the normal climate: set by main.py from the
+# temperature sensor (and the Up/Down keys). +2 means "2 C warmer than normal".
+warming_c = 0.0
+
 
 def sea_level_temp(start_day, length_days):
     """Average sea-level temperature over a stretch of time.
@@ -30,7 +34,7 @@ def sea_level_temp(start_day, length_days):
     b = a + length_days
     # average of cos over [a, b] = (sin(w*b) - sin(w*a)) / (w * (b - a))
     wave_average = (math.sin(w * b) - math.sin(w * a)) / (w * length_days)
-    return AVG_TEMP_C + SEASON_SWING_C * wave_average
+    return AVG_TEMP_C + warming_c + SEASON_SWING_C * wave_average
 
 
 def season_name(day_of_year):

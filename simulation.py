@@ -17,6 +17,7 @@ from conditions import run_conditions
 class Simulation:
     def __init__(self, original):
         self.original = original
+        self.version = 0           # goes up every time the terrain changes
         self.reset()
 
     def reset(self):
@@ -26,6 +27,7 @@ class Simulation:
         self.steps = []                                      # one record per step taken
         self.snapshots = [self.original.astype(np.float32)]  # terrain after each step (index 0 = start)
         self.history = []                                    # numbers per step, for charts
+        self.version += 1
 
     @property
     def step(self):
@@ -51,6 +53,7 @@ class Simulation:
         self.history.append({'step': self.step, 'days': self.elapsed_days,
                              'land_changed': land_changed, 'soil_moved': soil_moved,
                              'sea_temp': p['sea_temp']})
+        self.version += 1
 
     def rewind_to(self, step):
         """Go back to an earlier step; everything after it is forgotten."""
@@ -59,6 +62,7 @@ class Simulation:
         self.snapshots = self.snapshots[:step + 1]
         self.history = self.history[:step]
         self.elapsed_days = sum(s['dt_days'] for s in self.steps)
+        self.version += 1
 
     def heights_at(self, step):
         return self.snapshots[step].astype(float)

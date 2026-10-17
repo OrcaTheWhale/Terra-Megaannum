@@ -16,6 +16,7 @@ from ursina import *
 import analysis
 import climate
 import config
+from sensors import SensorReader
 from simulation import Simulation
 from TerrainHandler import FastTerrain
 from ui import ControlPanel, hud_text
@@ -30,6 +31,9 @@ print("graphics:", base.win.gsg.driver_renderer)
 
 sim = Simulation(original)
 
+sensors = SensorReader(config.SENSOR_PORT)     # reads the ESP32 in the background
+sensors.start()
+
 world = FastTerrain(original, texture=config.TEXTURE, scale=config.SCALE, double_sided=True)
 ghost = FastTerrain(original, scale=config.SCALE, wireframe=True,
                     color=color.rgba(1, 1, 1, 0.35), enabled=False)
@@ -38,6 +42,7 @@ camera.position = (0, 0, -110)
 orbit = EditorCamera()
 orbit.smoothing_helper.rotation_x = 50
 info = Text(position=window.top_left + Vec2(0.02, -0.02))
+busy_text = Text('', origin=(0, 0), y=-0.43, scale=1.3, enabled=False)   # "Calculating likelihood..."
 
 # ---------------------------------------------------------------- state
 running = False
@@ -49,6 +54,8 @@ hud_timer = 0
 likelihood_score = None
 spread = None
 runs_used = 0
+manual_warming = 0.0         # Up/Down keys add or remove warming by hand (works without sensors)
+likelihood_job = None        # the likelihood calculation running in the background, if any
 
 
 def shown_step():
@@ -64,6 +71,15 @@ def show(h):
 
 
 # ---------------------------------------------------------------- actions
+def stop_likelihood():
+    """Throw away a likelihood calculation that's still running."""
+    global likelihood_job
+    if likelihood_job is not None:
+        likelihood_job.cancel()
+        likelihood_job = None
+    busy_text.enabled = False
+
+
 def toggle_running():
     global running, view_step, likelihood_score
     if running:
@@ -77,6 +93,7 @@ def toggle_running():
         show(sim.heights)
         return                            # already reached the target
     likelihood_score = None               # the result is about to change
+    stop_likelihood()
     running = True
 
 
@@ -90,6 +107,7 @@ def step_view(amount):
 
 def reset():
     global running, view_step, likelihood_score, spread
+    stop_likelihood()
     sim.reset()
     running = False
     view_step = None
@@ -99,11 +117,32 @@ def reset():
 
 
 def check_likelihood():
-    global likelihood_score, spread, runs_used
+    """Start calculating the likelihood score in the background."""
+    global likelihood_job, likelihood_score
     if sim.step == 0:
         print('nothing simulated yet')
         return
-    likelihood_score, spread, runs_used = analysis.likelihood(sim)
+    stop_likelihood()
+    likelihood_score = None
+    likelihood_job = analysis.LikelihoodJob(sim)
+    busy_text.enabled = True
+
+
+def collect_likelihood():
+    """Each frame: show progress, and pick up the result once it's ready."""
+    global likelihood_job, likelihood_score, spread, runs_used
+    if likelihood_job is None:
+        return
+    if likelihood_job.version != sim.version:      # the terrain changed since it started
+        stop_likelihood()
+        return
+    if likelihood_job.finished:
+        likelihood_score, spread, runs_used = likelihood_job.result
+        likelihood_job = None
+        busy_text.enabled = False
+    else:
+        done, total = likelihood_job.done_runs, likelihood_job.total_runs
+        busy_text.text = f'Calculating likelihood... {done}/{total} runs'
 
 
 panel = ControlPanel(on_start_pause=toggle_running, on_reset=reset,
@@ -113,7 +152,7 @@ panel = ControlPanel(on_start_pause=toggle_running, on_reset=reset,
 
 # ---------------------------------------------------------------- keys
 def input(key):
-    global showing_original, steps_per_frame
+    global showing_original, steps_per_frame, manual_warming
     if key == 'space':
         toggle_running()
     elif key == 'r':
@@ -140,11 +179,36 @@ def input(key):
         analysis.save_uncertainty_map(spread, likelihood_score or 0)
     elif key in ('1', '2', '3'):
         steps_per_frame = {'1': 1, '2': 5, '3': 20}[key]
+    elif key in ('up arrow', 'up arrow hold'):
+        manual_warming += 0.5
+    elif key in ('down arrow', 'down arrow hold'):
+        manual_warming -= 0.5
+    elif key == 'z':
+        sensors.rezero()
+
+
+def sensor_lines():
+    """Two lines of text describing the sensors and the climate change they cause."""
+    if sensors.connected():
+        strength, direction = sensors.wind()
+        wind = f'{strength:.2f}' + (f' toward {direction:.0f} deg' if direction is not None else '')
+        readings = (f"Sensors ({sensors.port}): temp {sensors.get('temp'):.1f} C | "
+                    f"rain {sensors.norm('hum'):.2f} | sun {sensors.norm('light'):.2f} | "
+                    f"fire {sensors.norm('flame'):.2f} | wind {wind}")
+    else:
+        readings = f"Sensors: not connected ({sensors.error or 'connecting...'})"
+    climate_line = (f"Climate: {climate.warming_c:+.1f} C vs normal "
+                    f"(sensor {sensors.temp_change():+.1f}, keys {manual_warming:+.1f})")
+    return readings + '\n' + climate_line
 
 
 # ---------------------------------------------------------------- main loop
 def update():
     global running, redraw_timer, hud_timer
+
+    # the sensor's temperature change (plus the Up/Down keys) shifts the whole climate
+    climate.warming_c = sensors.temp_change() + manual_warming
+    collect_likelihood()
 
     if running:
         for i in range(steps_per_frame):
@@ -183,7 +247,9 @@ def update():
             enabled=panel.enabled(),
             scores=(land_changed, soil_moved, h.sum(), h.std(), original.std()),
             likelihood=likelihood_score, runs=runs_used, speed=steps_per_frame,
-            showing_original=showing_original)
+            showing_original=showing_original, sensor_lines=sensor_lines(),
+            likelihood_progress=None if likelihood_job is None
+            else (likelihood_job.done_runs, likelihood_job.total_runs))
 
 
 app.run()

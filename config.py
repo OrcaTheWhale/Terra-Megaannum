@@ -9,6 +9,9 @@ TEXTURE = "Texture PNG.png"
 SKIP = 4                    # shrink the terrain when loading (1, 2, 4, 8...). Bigger = faster
 SCALE = (35, 35, 35)        # (width, height, depth) of the terrain on screen
 
+# ---------------------------------------------------------------- sensors
+SENSOR_PORT = None          # e.g. "COM5". None = find the ESP32 automatically
+
 # ---------------------------------------------------------------- the real place
 # Fill these in for your heightmap so heights can be turned into metres.
 MIN_ELEVATION_M = 0         # lowest point of the map, in metres

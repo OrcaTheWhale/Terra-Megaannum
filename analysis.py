@@ -2,6 +2,7 @@
 analysis.py - measuring the results: change scores, the likelihood score, charts and maps.
 """
 
+import threading
 import time
 
 import matplotlib
@@ -22,23 +23,45 @@ def change_scores(h, original):
     return land_changed, soil_moved
 
 
-def likelihood(sim):
-    """How likely is this result?
+class LikelihoodJob:
+    """How likely is this result? Calculated in the background so the app doesn't freeze.
 
     Replays the whole simulation several times, each with slightly different but
     equally believable inputs (parameters nudged within UNCERTAINTY, every starting
     height nudged by up to HEIGHT_ERROR), then measures how often the runs end up
     within TOLERANCE of our result. This is a Monte Carlo / ensemble method.
 
-    Returns (likelihood %, spread map, number of runs used).
+    Usage:
+        job = LikelihoodJob(sim)    # starts straight away, in the background
+        job.done_runs, job.total_runs   # progress
+        job.result                  # (likelihood %, spread map, runs used) once finished
+        job.cancel()                # stop early
     """
-    rng = np.random.default_rng()
 
-    def one_alternative_run():
+    def __init__(self, sim):
+        # a frozen copy of everything needed, so the simulation can keep going meanwhile
+        self.original = sim.original.copy()
+        self.steps = list(sim.steps)
+        self.target = sim.heights.copy()
+        self.version = sim.version          # which state of the simulation this score is for
+        self.done_runs = 0
+        self.total_runs = ENSEMBLE_RUNS
+        self.result = None
+        self.cancelled = False
+        threading.Thread(target=self._run, daemon=True).start()
+
+    @property
+    def finished(self):
+        return self.result is not None
+
+    def cancel(self):
+        self.cancelled = True
+
+    def _one_alternative_run(self, rng):
         base = {name: value * (1 + rng.uniform(-UNCERTAINTY.get(name, 0), UNCERTAINTY.get(name, 0)))
                 for name, value in PARAMS.items()}
-        h = sim.original + rng.uniform(-HEIGHT_ERROR, HEIGHT_ERROR, sim.original.shape)
-        for s in sim.steps:                       # replay exactly the same steps
+        h = self.original + rng.uniform(-HEIGHT_ERROR, HEIGHT_ERROR, self.original.shape)
+        for s in self.steps:                      # replay exactly the same steps
             p = dict(base)
             p['dt_days'] = s['dt_days']
             p['day'] = s['start_day'] % 365
@@ -46,20 +69,28 @@ def likelihood(sim):
             h = run_conditions(h, p, s['enabled'])
         return h
 
-    # time one run, then use as many runs as fit in the time limit (at least 5)
-    t0 = time.perf_counter()
-    finals = [one_alternative_run()]
-    per_run = max(time.perf_counter() - t0, 1e-6)
-    runs = max(5, min(ENSEMBLE_RUNS, int(ENSEMBLE_TIME_LIMIT / per_run)))
-    for _ in range(runs - 1):
-        finals.append(one_alternative_run())
+    def _run(self):
+        rng = np.random.default_rng()
 
-    finals = np.array(finals)
-    agree = np.abs(finals - sim.heights) <= TOLERANCE
-    score = agree.mean() * 100
-    spread = finals.std(axis=0)
-    print(f'likelihood: {score:.1f}% over {runs} runs ({per_run * runs:.1f} s)')
-    return score, spread, runs
+        # time one run, then use as many runs as fit in the time limit (at least 5)
+        t0 = time.perf_counter()
+        finals = [self._one_alternative_run(rng)]
+        per_run = max(time.perf_counter() - t0, 1e-6)
+        self.total_runs = max(5, min(ENSEMBLE_RUNS, int(ENSEMBLE_TIME_LIMIT / per_run)))
+        self.done_runs = 1
+        for _ in range(self.total_runs - 1):
+            if self.cancelled:
+                return
+            finals.append(self._one_alternative_run(rng))
+            self.done_runs += 1
+
+        finals = np.array(finals)
+        agree = np.abs(finals - self.target) <= TOLERANCE
+        score = agree.mean() * 100
+        spread = finals.std(axis=0)
+        print(f'likelihood: {score:.1f}% over {self.total_runs} runs '
+              f'({time.perf_counter() - t0:.1f} s)')
+        self.result = (score, spread, self.total_runs)
 
 
 # ---------------------------------------------------------------- saving pictures
