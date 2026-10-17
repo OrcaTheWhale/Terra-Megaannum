@@ -14,7 +14,7 @@ app = Ursina(title='Math Hacks 2.0', development_mode=False)
 heightmap = "assets/generated_heightmap.png"
 texture = "assets/Texture PNG.png"
 skip = 4
-scale = (35, 35, 35)
+scale = (35, 10, 35)
 
 # load the PNG once, then convert to decimals for changes
 start = Terrain(heightmap=heightmap, skip=skip)
@@ -24,8 +24,10 @@ print("terrain size:", heights.shape)
 print("graphics:", base.win.gsg.driver_renderer)     # which GPU Ursina is drawing with
 
 # FastTerrain: rebuilding the Terrain much faster
-pn.create_heightmap()
-world = FastTerrain(heights, texture=texture, scale=scale, double_sided=True)
+def generate_world():
+    pn.create_heightmap()
+    world = FastTerrain(heights, texture=texture, scale=scale, double_sided=True)
+generate_world()
 
 ghost = FastTerrain(original, scale=scale, wireframe=True,
                     color=color.rgba(1, 1, 1, 0.35), enabled=False)
@@ -96,6 +98,7 @@ def input(key):
         steps_per_frame = 5
     elif key == '3':
         steps_per_frame = 20
+
 
 
 def update():

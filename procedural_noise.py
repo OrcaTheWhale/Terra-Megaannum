@@ -1,8 +1,8 @@
 import numpy as np
 from noise import snoise2
 from PIL import Image
-height: int = 255
-width: int = 255
+height: int = 1000
+width: int = 1000
 seed: int = np.random.randint(1, 1000000) # random seed
 frequency: float = 1.5 # higher values make more steeper and taller hills, while lower values make less smoother hills
 
