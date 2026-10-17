@@ -4,7 +4,7 @@ from PIL import Image
 height: int = 255
 width: int = 255
 seed: int = np.random.randint(1, 1000000) # random seed
-frequency: float = 3.5 # higher values make more steeper and taller hills, while lower values make less smoother hills
+frequency: float = 1.5 # higher values make more steeper and taller hills, while lower values make less smoother hills
 
 value = np.zeros((height, width), dtype=np.uint8) #creates an array the size of the grid filled entirely with zeros, each entry as an 8 bit number for the greyscale values.
 def create_heightmap():
