@@ -2,8 +2,11 @@
 ### A simulated environment with realistic conditions, over long periods of time to educate about erosion.  
 ![Example](assets/example.gif)
 
+MathHacks 2.0
+
 Using Ursina's library/game engine, we are able to create a terrain simulator that ranges over a long period of time.
 This simulator takes math calculations and numbers to model and render a 3D terrain and its changes over many different conditions.
+
 
 Members:
 Edward Zhang - Simulations; hardware
