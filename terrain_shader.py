@@ -1,17 +1,5 @@
-"""
-terrain_shader.py - paints the terrain on the graphics card: grass, rock on steep slopes,
-snow above the snow line, with simple sunlight shading.
-
-Inputs set from Python (main.py):
-    grass_tex, rock_tex, snow_tex, dirt_tex   the four textures (dirt: teammate's addition,
-                                    on low ground and moderate slopes)
-    snow_line                       height (0 = lowest point, 1 = highest) where it's 0 C;
-                                    worked out from the climate, so warming melts the snow
-    veg_tex, veg_on                 plant cover map (0 bare - 1 forest) from vegetation.py; with
-                                    veg_on = 0 plants simply cover everything that isn't steep
-    height_ratio                    real height range / real map width (e.g. 1500 m / 10000 m),
-                                    so rock goes on slopes that are really steep (~25-40 degrees),
-                                    not ones that only look steep because the 3D view is stretched
+"""terrain_shader.py - colours the terrain on the graphics card: grass, dirt, rock on steep
+slopes, plants from vegetation.py, snow above the snow line; and the water shader (ice above it).
 """
 
 from ursina import Shader

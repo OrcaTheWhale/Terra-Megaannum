@@ -1,17 +1,5 @@
-"""
-weather.py - decides the weather the VFX teammate's particles (particle.py) show, plus fire.
-
-The rain, snow and wind particles themselves are particle.py's rain(), snow() and wind().
-This file is the "brain" that steers them while the simulation runs:
-  - the model decides the weather:
-        snow falls where the ground is above the snow line (below 0 C), rain below it
-        rain amount  <- the yearly rain (menu, humidity sensor, [ ] keys)
-        wind         <- joystick push and direction (or WIND_* in config.py)
-        fire         <- flame sensor (or the B key): flames + smoke on a spot below the snow line
-  - raindrops and snowflakes start where they'll land on the right ground (more on the windward
-    slopes, snow only above the snow line), upwind so the wind carries them onto that spot
-
-Purely visual: it doesn't change the terrain (rain driving erosion comes with the river model).
+"""weather.py - decides what weather particle.py shows (amount, snow vs rain, wind,
+more drops on windward slopes), plus the fire and smoke.
 """
 
 import math
@@ -143,9 +131,7 @@ class Weather(Entity):
         return max(self.sy, self.heights.max() / 255 * self.sy) * 1.15
 
     def drop_start(self, kind):
-        """Where a raindrop / snowflake starts (particle.py calls this): pick where it will
-        land (more often where it rains more), keep it if that ground suits it (snow above the
-        snow line, rain below), and start it upwind so the wind carries it onto that spot."""
+        """Where a raindrop / snowflake starts: a landing spot that suits it, moved upwind."""
         if self.heights is None:
             return None
         fx = self.rain_fx if kind == 'rain' else self.snow_fx

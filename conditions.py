@@ -1,23 +1,6 @@
-"""
-conditions.py - the physics. Each condition changes the land during one step.
-
-Every condition is a function  condition(h, p) -> new h
-    h  the heights (NumPy array, 0-255 scale)
-    p  a dictionary with:
-         everything in PARAMS (config.py), e.g. p['creep_d']
-         p['dt_days']    how many days this step covers (1 day up to 10,000 years)
-         p['cell_m']     real distance between neighbouring points, in metres
-         p['day']        day of the year this step starts on
-         p['sea_temp']   average sea-level temperature during this step (C)
-         p['rain_mm']    yearly rain during this step (mm)
-         p['state']      a dict that lasts the whole simulation, for conditions that need
-                         to remember things between steps (river erosion keeps its drainage here)
-
-To add a condition (rain, wind, plants...):
-  1. write its function here (or in its own file and import it here)
-  2. add it to CONDITIONS below
-  3. put its numbers in PARAMS and UNCERTAINTY in config.py
-A checkbox for it appears on screen automatically.
+"""conditions.py - the processes that change the land each step.
+Each one is a function (heights, p) -> new heights; CONDITIONS lists them in run order
+(a checkbox appears for each).
 """
 
 import math
@@ -32,16 +15,7 @@ MAX_RATE_PER_SUBSTEP = 0.5    # soil creep goes unstable above 1; 0.5 keeps a sa
 
 
 def soil_creep(h, p):
-    """Soil slides from high spots toward the average of its 4 neighbours.
-
-    This is the diffusion equation  dh/dt = D * laplacian(h), with D in m^2/year.
-    On our grid it becomes: each point moves toward its neighbours' average by
-        rate = 4 * D * (time in years) / (distance between points)^2
-    Real D is tiny, so visible change takes hundreds of thousands of years.
-
-    A big step in one go makes the maths unstable (the terrain explodes into spikes),
-    so a long step is split into enough small sub-steps to stay stable.
-    """
+    """Soil slides from high spots toward the average of its 4 neighbours."""
     years = p['dt_days'] / 365
     total = 4 * p['creep_d'] * years / p['cell_m'] ** 2
     substeps = max(1, math.ceil(total / MAX_RATE_PER_SUBSTEP))
@@ -67,15 +41,7 @@ def uplift_pattern(shape):
 
 
 def tectonic_uplift(h, p):
-    """The ground is pushed up by p['uplift_mm_yr'] mm per year in the middle of the map.
-
-    Without uplift, every run could only ever flatten the land. Soil creep alone is far too
-    slow to balance it on a map this size (it would take ~20 billion years to reshape 10 km),
-    so with only creep + uplift the mountains keep growing. In real landscapes it's mainly
-    rivers (and landslides) that cut mountains down fast enough to balance uplift: with
-    river erosion added, long runs can reach a "steady state" where the shape stops changing
-    while rock keeps flowing through it.
-    """
+    """The ground is pushed up by p['uplift_mm_yr'] mm per year in the middle of the map."""
     years = p['dt_days'] / 365
     rise_m = p['uplift_mm_yr'] / 1000 * years
     units_per_m = 255 / (config.MAX_ELEVATION_M - config.MIN_ELEVATION_M)

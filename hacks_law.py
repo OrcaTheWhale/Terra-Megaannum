@@ -1,23 +1,5 @@
-"""
-hacks_law.py - checks the rivers against a law measured on real rivers (Hack's law).
-
-In 1957 John Hack measured rivers in the eastern US and found that a river's length grows
-with the area of land that drains into it, always in the same way:
-
-    L = c * A^h        with h about 0.6   (Hack: L = 1.4 A^0.6 in miles, = 1.27 A^0.6 in km)
-
-Every river network on Earth gives h between about 0.5 and 0.6. It's not something we told
-the model: if our flow routing and erosion make realistic river networks, it should come out
-on its own. So this is a test of the model against reality.
-
-How it's measured (same downhill directions the water and erosion use):
-    A = area draining into each point     (add each point's area to everything downhill of it)
-    L = longest river path reaching it    (keep the longest upstream path, + one step each time)
-Then a straight line through log L vs log A: its slope is h.
-
-Run:  python hacks_law.py            (real map, before and after 1 million years)
-      python hacks_law.py 42         (a generated map with seed 42 instead)
-Makes hacks_law.png for the slides.
+"""hacks_law.py - checks our rivers against real ones (Hack's law: length = c * area^h,
+h is about 0.5-0.6 for real rivers). Run: python hacks_law.py   (or with a seed: python hacks_law.py 42)
 """
 
 import sys
@@ -52,9 +34,7 @@ def measure(h, cell_m):
 
 
 def fit(area, length):
-    """Hack exponent h and constant c from a straight line through log L vs log A.
-    Points are grouped into area bins first, so the thousands of small streams don't
-    outweigh the few big rivers."""
+    """Hack exponent h and constant c from a straight line through log L vs log A."""
     keep = area >= MIN_AREA_KM2
     log_a, log_l = np.log10(area[keep]), np.log10(length[keep])
     edges = np.linspace(log_a.min(), log_a.max(), 15)

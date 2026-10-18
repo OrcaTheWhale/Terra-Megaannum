@@ -1,30 +1,7 @@
-"""
-erosion.py - rivers cutting valleys and carrying sediment downstream (the 'River erosion' condition).
-
-Each step:
-  1. DRAINAGE: which way water flows from every point (its "receiver", the lowest neighbour
-     on the hollow-filled terrain) and how much land drains through it (drainage area A).
-     This barely changes from one step to the next, so it's worked out again only after
-     REROUTE_YEARS of simulated time or REROUTE_EVERY steps, whichever comes first (it's the
-     slow part, ~25 ms; doing it every step gave nearly the same landscape in testing).
-  2. EROSION (stream power law): a river cuts down at
-         E = K * (A * wetness)^m * slope      (m = 0.5)
-     More water and steeper slopes cut faster. Plants protect the ground: K is lowered by
-     up to veg_protection (70%) where the vegetation cover is full. K comes from field measurements. Solved with
-     the implicit method (Braun & Willett 2013, "FastScape"): working up from the river mouths,
-     each point is solved exactly using its already-updated receiver, so even 10,000-year
-     steps stay stable.
-  3. SEDIMENT: the eroded soil is carried downstream, from the highest points to the lowest.
-     Along the way a share of it settles out (deposition rate = G * sediment flux / A, the
-     "xi-q" model of Davy & Lague 2009), so big, gentle rivers drop sediment and build flat
-     valley floors. Lakes trap everything that reaches them until they're filled up (deltas).
-     Whatever reaches the map edge is washed off the map, and counted.
-
-Soil is conserved: eroded = deposited + washed off the map.
-
-Speed trick: points are stored sorted by "level" (0 = river mouth at the map edge, 1 = drains
-into a mouth, 2 = drains into a level-1 point, ...), so each level is one block of the arrays
-and every level is worked out in one go with NumPy instead of one point at a time.
+"""erosion.py - rivers cutting valleys and carrying sediment downstream.
+  1. drainage: where water flows and how much drains through each point
+  2. erosion: E = K * Q^0.5 * slope, solved from the river mouths upward (stable for long steps)
+  3. sediment: part settles at each point, lakes trap it, the rest washes off the map edge
 """
 
 import numpy as np
@@ -83,9 +60,7 @@ def _route(h, state):
 
 
 def river_erosion(h, p):
-    """One step of river erosion + sediment transport. p needs:
-    river_k (1/yr), deposition_g, dt_days, cell_m, rain_mm, sea_temp, and a 'state' dict that
-    lives as long as the simulation (it remembers the drainage between steps)."""
+    """One step of river erosion + sediment transport."""
     state = p['state']
     if (state.get('shape') != h.shape or state['steps_since_route'] >= REROUTE_EVERY
             or state['years_since_route'] >= REROUTE_YEARS):

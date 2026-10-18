@@ -1,13 +1,5 @@
-"""
-menu.py - the main menu shown before the simulation starts.
-
-  1. choose a map: one of the PNG maps in config.MAPS, or a generated noise map
-     (noise_map.py, with a seed and frequency)
-  2. describe the real place: width, lowest/highest point, temperatures
-  3. Start -> calls on_start(heights, texture, settings)
-
-settings is a dictionary like {'MAP_WIDTH_M': 10000.0, 'AVG_TEMP_C': 5.0, ...}; the names
-match config.py, so main.py can copy them straight into config.
+"""menu.py - the main menu: choose a map (or generate one) and describe the real place,
+then START calls on_start(heights, texture, settings).
 """
 
 import random

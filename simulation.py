@@ -1,9 +1,5 @@
-"""
-simulation.py - keeps track of time and everything that has happened.
-
-The Simulation remembers every step it has taken (how long it was, which
-conditions were ticked, the temperature) and the terrain after each step,
-so you can look back through time, rewind, and replay for the likelihood score.
+"""simulation.py - time and history: runs each step and remembers every step
+(so you can look back, rewind, and replay for the likelihood score).
 """
 
 import numpy as np

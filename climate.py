@@ -1,10 +1,5 @@
-"""
-climate.py - seasons and temperature.
-
-The model doesn't forecast weather. It takes a climate input (the yearly average
-and seasonal swing from the menu / config.py, adjusted by the sensor) and works out:
-  - the sea-level temperature for any part of the year
-  - the temperature at every point on the map, from its height (lapse rate)
+"""climate.py - temperature: seasons over the year, colder higher up (6.5 C per km),
+the snow line, lake evaporation and how much rain runs off.
 """
 
 import math
@@ -39,13 +34,7 @@ def current_rain_mm():
 
 
 def sea_level_temp(start_day, length_days):
-    """Average sea-level temperature over a stretch of time.
-
-    Temperature follows a wave over the year:
-        T(t) = AVG + SWING * cos(2*pi*(t - WARMEST_DAY) / 365)
-    We average that wave over the step, so a 1-day step gets that day's temperature,
-    a season step gets that season's average, and a whole year averages out to AVG.
-    """
+    """Average sea-level temperature over a stretch of time."""
     w = 2 * math.pi / YEAR
     a = start_day - config.WARMEST_DAY
     b = a + length_days
@@ -78,29 +67,19 @@ def temperature_map(heights, sea_temp):
 
 
 def snow_line(sea_temp):
-    """Height where it's 0 C, on the map's 0-1 scale (0 = lowest point, 1 = highest).
-    Below 0 = the whole map is freezing; above 1 = nowhere is.
-    From  sea_temp - LAPSE_RATE * height = 0   ->   height = sea_temp / LAPSE_RATE."""
+    """Height where it's 0 C, on the map's 0-1 scale (0 = lowest point, 1 = highest)."""
     freezing_m = sea_temp / LAPSE_RATE
     low, high = config.MIN_ELEVATION_M, config.MAX_ELEVATION_M
     return (freezing_m - low) / (high - low)
 
 
 def lake_evaporation_mm(temp_c):
-    """How much water evaporates from a lake surface in a year (mm), at a yearly mean temperature.
-    About 700 mm/yr at 8 C, rising ~7% for every degree warmer (Clausius-Clapeyron: warm air
-    holds ~7% more water vapour per degree). Gives ~400 mm at 0 C and ~2200 mm at 25 C."""
+    """How much water evaporates from a lake surface in a year (mm), at a yearly mean temperature."""
     return 700 * 1.07 ** (temp_c - 8)
 
 
 def runoff_mm(rain_mm, evaporation_mm, w=2.6):
-    """How much of the yearly rain runs off the land into rivers and lakes (mm/yr).
-
-    The rest is evaporated or used by plants. Budyko curve (Fu's equation): with
-    aridity = evaporation / rain, the share that evaporates is
-        1 + aridity - (1 + aridity^w)^(1/w)
-    so in a wet place most rain runs off, in a desert almost none does.
-    """
+    """How much of the yearly rain runs off the land into rivers and lakes (mm/yr)."""
     rain = np.maximum(np.asarray(rain_mm, dtype=float), 1e-9)   # works for one number or a map
     aridity = evaporation_mm / rain
     evaporated_share = 1 + aridity - (1 + aridity ** w) ** (1 / w)

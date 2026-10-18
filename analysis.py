@@ -28,21 +28,7 @@ def change_scores(h, original):
 
 
 class LikelihoodJob:
-    """How likely is this result? Calculated in the background so the app doesn't freeze.
-
-    Replays the whole simulation several times, each with slightly different but
-    equally believable inputs (parameters nudged within UNCERTAINTY, every starting
-    height nudged by up to HEIGHT_ERROR). Then, on the land that changed by more than
-    MIN_CHANGE, it measures how often the runs changed it by the same amount (within
-    RELATIVE_TOLERANCE, e.g. 25%). This is a Monte Carlo / ensemble method.
-    The score is NaN if nothing has changed enough to score yet.
-
-    Usage:
-        job = LikelihoodJob(sim)    # starts straight away, in the background
-        job.done_runs, job.total_runs   # progress
-        job.result                  # (likelihood %, spread map, runs used) once finished
-        job.cancel()                # stop early
-    """
+    """How likely is this result? Reruns with nudged rates and scores how often they agree."""
 
     def __init__(self, sim):
         # a frozen copy of everything needed, so the simulation can keep going meanwhile
@@ -111,12 +97,7 @@ class LikelihoodJob:
 
 
 def replay_chunks(steps):
-    """The history merged into at most REPLAY_CHUNKS longer steps, for fast replays.
-
-    Neighbouring steps with the same conditions ticked are joined: their lengths add up and
-    temperature and rain are averaged. Every condition handles long steps (creep with
-    sub-steps, rivers with the implicit method), so the result is nearly the same, much faster.
-    """
+    """The history merged into at most REPLAY_CHUNKS longer steps, for fast replays."""
     if not steps:
         return []
     size = max(1, -(-len(steps) // REPLAY_CHUNKS))      # steps per chunk, rounded up

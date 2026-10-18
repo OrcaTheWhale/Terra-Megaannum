@@ -1,21 +1,7 @@
-"""
-main.py - starts the app and runs the main loop. Run:  python main.py
+"""main.py - starts the app and runs the main loop. Run: python main.py
 
-Where things live:
-    config.py        settings and numbers
-    conditions.py    the physics: soil creep, tectonic uplift (add new conditions here)
-    erosion.py       river erosion + sediment (the 'River erosion' condition)
-    climate.py       seasons and temperature
-    simulation.py    time, steps, history, looking back
-    analysis.py      scores, likelihood, charts and maps
-    ui.py            control panel and information text
-    water.py         rivers and lakes (where the rain goes), drawn on top of the terrain
-    weather.py       rain, snow, wind and fire effects
-    vegetation.py    plants growing, protecting soil; fire burns them (the 'Vegetation' condition)
-    menu.py          the main menu (choose a map, describe the place)
-    maps.py          loading heightmap PNGs and generating noise maps
-    TerrainHandler.py  fast 3D drawing
-    terrain_shader.py  grass / rock / snow colouring on the graphics card
+The physics lives in conditions.py, erosion.py, vegetation.py, water.py, rain.py and
+climate.py; simulation.py keeps the history; ui.py, menu.py and weather.py are the screen.
 """
 
 from ursina import *
@@ -156,9 +142,7 @@ def stop_likelihood():
 
 
 def toggle_running():
-    """Start adds the number of steps in the box (of the chosen length) to wherever you are.
-    So: 365 Day steps, then 2 Season steps, then 100 x 1,000 yr... all in one timeline.
-    Pressing it during a run pauses; pressing again carries on to the same goal."""
+    """Start adds the number of steps in the box (of the chosen length) to wherever you are."""
     global running, view_step, likelihood_score, run_goal, nonstop, run_box
     panel.steps_field.active = False      # stop typing in the steps box
     if running:
@@ -320,13 +304,7 @@ def plant_line():
 
 
 def live_sea_temp(step):
-    """Sea-level temperature for the step being shown.
-
-    Looking back at an earlier step: the temperature that was recorded when that step ran
-    (including any sensor warming at the time), so you see the past climate as it was.
-    At the latest step: worked out with the sensor's warming right now, so heating the
-    sensor melts the snow straight away, even while paused.
-    """
+    """Sea-level temperature for the step being shown."""
     if 0 < step < sim.step:           # looking back: what it really was back then
         return sim.steps[step - 1]['sea_temp']
     if step == 0:                     # before the first step: the climate over one step of the chosen length

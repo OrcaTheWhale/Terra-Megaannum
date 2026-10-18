@@ -1,20 +1,7 @@
-"""
-particle.py - rain, snow and wind particles (VFX teammate's code).
-
-Each function makes a manager that keeps spawning particles; particles are recycled (moved back
-to a start point when their life runs out) instead of being deleted and made again, which is
-much faster than creating new entities all the time.
-
-Changes so the simulation can drive these while it runs (marked "sim:" below):
-  - the managers keep their settings as attributes (manager.intensity, .windspeed, .windangle,
-    wind's .angle and .speed), so weather.py can change the weather at any time
-  - optional spawn_point(): where a particle (re)starts, and ground(x, z): the height it lands
-    on (it's recycled when it hits the terrain instead of falling through it)
-  - particles belong to their manager, and the common spawning/recycling code is shared
-  - colours use rgba32 (0-255 values), since Ursina's rgba() expects 0-1
-  - max_particles cap, and fewer particles when the intensity drops
-  - wind: the spawn timer is reset properly (it used self.spawnT), and the map size / height
-    can be given instead of the fixed 255
+"""particle.py - rain, snow and wind particles (VFX teammate's code).
+Each function makes a manager that spawns particles and recycles them instead of deleting them.
+weather.py changes the settings (manager.intensity, .windspeed, ...) while the app runs;
+additions for that are marked "sim:".
 """
 
 from ursina import *
@@ -262,11 +249,7 @@ def wind(intensity = 0.0, speed = 5, size = (255, 20), angle = 0,
             self.height = height
 
         def start_position(self):
-            """
-            the below lines are difficult to explain
-            but they use trig to determine on what side the map spawns
-            and randomizes the placement on a plane perpendicular to the direction
-            """
+            """Uses trig to pick the side of the map the wind starts on, spread out across it."""
             self.life = 2 * self.distance / self.speed
             a = self.angle
             return (self.distance*math.cos(math.radians(a)) + random.uniform(-self.size[0], self.size[0])*math.cos(math.radians(a + 90)),

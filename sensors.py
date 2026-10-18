@@ -1,18 +1,6 @@
-"""
-sensors.py - reads the ESP32's sensor lines in the background.
-
-The ESP32 sends lines like:   S,15320,22.0,45.0,1874,4095,3.2,135
-COLUMNS says what each position means (it must match the ESP32's printf).
-
-Usage:
-    sensors = SensorReader()        # or SensorReader('COM5')
-    sensors.start()
-    sensors.get('hum')              # smoothed raw value, e.g. 45.0
-    sensors.norm('light')           # scaled 0..1 using CALIBRATION
-    sensors.temp_change()           # degrees C warmer (+) or colder (-) than at startup
-
-Test it on its own (ESP32 plugged in, serial monitor closed):
-    python sensors.py
+"""sensors.py - reads the ESP32's sensor lines in the background.
+Line format: S,millis,temp,humidity,light,flame,tilt,direction
+Test on its own: python sensors.py
 """
 
 import math
@@ -122,9 +110,7 @@ class SensorReader:
         return min(1.7, max(0.3, 1 + LIGHT_GAIN * (self.norm('light') - base)))
 
     def fire_level(self):
-        """0-1: how far the flame reading has moved from its zero point toward its far end.
-        Works whether the module reads lower (most) or higher near a flame: it looks at
-        which end the zero point is closer to and measures the change toward the other end."""
+        """0-1: how far the flame reading has moved from its zero point toward its far end."""
         if 'flame' not in self.values:
             return 0.0
         base = self.base.setdefault('flame', self.values['flame'])

@@ -1,7 +1,5 @@
-"""
-maps.py - where the starting terrain comes from: a heightmap PNG, or a generated noise map.
-
-Both give back heights as a NumPy array on the 0-255 scale (decimals allowed).
+"""maps.py - the starting terrain: a heightmap PNG or a generated noise map,
+as heights from 0 to 255.
 """
 
 from pathlib import Path
@@ -50,10 +48,7 @@ def load_heightmap(filename, size=None):
 
 
 def stand_in_noise(seed, size=64, octaves=5):
-    """BASIC BACKUP generator: used only when noise_map.py (the main generator) can't run
-    because the noise package isn't installed.
-    How it works: a few grids of random numbers (3, 5, 9, 17, 33 points across), each
-    smoothly stretched to the map size and added together, smaller grids counting less."""
+    """BASIC BACKUP generator, used only if the noise package (for noise_map.py) isn't installed."""
     rng = np.random.default_rng(seed)
     h = np.zeros((size, size))
     for octave in range(octaves):
@@ -64,11 +59,7 @@ def stand_in_noise(seed, size=64, octaves=5):
 
 
 def generate_heights(seed, res = 128, frequency=1.5, octaves=2):
-    """A generated map, the same size as a loaded one (config.GRID_SIZE points across).
-
-    The result is stretched so the lowest point is 0 and the highest is 255: then the
-    "lowest point" and "highest point" typed in the menu really are the lowest and highest.
-    """
+    """A generated map, the same size as a loaded one (config.GRID_SIZE points across)."""
     size = res
     if create_heightmap is not None:
         h = create_heightmap(seed, width=size, height=size, frequency=frequency,

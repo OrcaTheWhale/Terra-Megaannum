@@ -1,25 +1,6 @@
-"""
-vegetation.py - plants and forests (the 'Vegetation' condition), and fire.
-
-Plant cover is a number from 0 (bare ground) to 1 (dense forest) at every point. It's kept in
-the simulation's state, not in the heights, because it doesn't move soil itself: it PROTECTS
-soil, making river erosion slower where plants are thick (roots hold the ground).
-
-Each step:
-  1. CARRYING CAPACITY: the most plant cover each point can support, from
-        temperature   too cold above the treeline (yearly mean below about -4 C: no plants)
-        rain          deserts (under ~150 mm a year) support almost nothing; ~800 mm+ is full
-        slope         cliffs steeper than ~55 degrees hold no soil, so no plants
-  2. GROWTH: logistic growth toward that capacity,
-        dV/dt = r * V * (1 - V / capacity)
-     fast when sparse, slowing as it fills up. r is faster with more sunlight (light sensor).
-     Solved exactly for any step length, so a 1,000-year step just reaches the capacity.
-  3. SPREADING: plants creep into neighbouring ground (seeds), so a burned patch regrows
-     from its edges inward. Growth + spreading together is the Fisher-KPP equation.
-
-Fire (flame sensor or the B key) burns the plants in a patch. Regrowth takes decades, so it's
-only visible with Day / Season / Year steps - with 1,000-year steps the forest is always
-back by the next step. That's "separation of timescales": plants are fast, terrain is slow.
+"""vegetation.py - plant cover (0 bare - 1 forest) and fire.
+Grows by logistic growth toward a limit set by temperature, rain and slope, spreads to
+neighbours, and protects soil from river erosion. Fire burns a patch that regrows over decades.
 """
 
 import numpy as np

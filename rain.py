@@ -1,17 +1,6 @@
-"""
-rain.py - where the rain falls: wind pushes moist air up mountainsides (wind-driven rain).
-
-When wind blows against a mountain, the air is forced up, cools, and drops its water: the side
-facing the wind gets extra rain. On the far side the air sinks and warms, so it rains less:
-a dry "rain shadow". (That's why one side of many mountain ranges is green and the other dry.)
-
-Upslope model: extra rain is proportional to how fast the wind lifts the air,
-    lift = wind velocity . slope   (wind speed x how steeply the ground rises along the wind)
-positive on slopes facing the wind (wetter), negative on slopes facing away (drier). The
-terrain is smoothed over about 600 m first, because clouds drift a little before raining
-and react to whole mountainsides, not single bumps.
-
-The yearly rain from the menu stays the AVERAGE; it's only moved around the map.
+"""rain.py - wind-driven rain: wind pushes air up the slopes it hits, so they get more rain
+and the far side gets a rain shadow. Extra rain ~ wind speed x uphill slope;
+the average stays the menu's yearly rain.
 """
 
 import numpy as np

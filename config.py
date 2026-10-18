@@ -3,7 +3,7 @@ config.py - every setting and number in one place.
 Change values here instead of hunting through the other files.
 """
 
-VERSION = 'v22'              # shown in the window title, the terminal and check_files.py
+VERSION = 'v23'              # shown in the window title, the terminal and check_files.py
 
 # ---------------------------------------------------------------- maps
 # The maps you can pick in the menu: name -> (heightmap PNG, texture PNG or None).

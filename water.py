@@ -1,25 +1,5 @@
-"""
-water.py - rivers and lakes: where rain water goes on the current terrain, and drawing it.
-
-How it works (each time the terrain changes):
-  1. Fill the hollows. Rain that runs into a hollow fills it up until it spills over
-     the lowest point of its rim - that's a lake. (Priority-flood algorithm.)
-  2. Find downhill. Every point sends its water to its lowest neighbour (8 directions).
-  3. Add up the flow. Going from the highest point to the lowest, each point passes
-     on all the water it has collected. Flow = how many points drain through here.
-  4. Rivers are where enough land drains through a point (RIVER_MIN_AREA_KM2).
-
-Drawing: the water is a second copy of the terrain mesh (same grid, same triangles).
-Where there's water, its surface sits above the ground; everywhere else it sits just
-below the ground, so it's hidden. Because both meshes share the exact same triangles,
-the river and lake edges come out smooth instead of blocky.
-
-The water is only drawn - it doesn't move soil yet (that will be a 'Rivers' condition).
-
-main.py only needs:
-    rivers = RiverSystem(original_heights, scale=config.SCALE)
-    rivers.request(heights, key)   # whenever the terrain is redrawn (key: see request)
-    rivers.update(time.dt)        # every frame (animates the ripples)
+"""water.py - rivers and lakes: fill hollows, find downhill, add up the flow; lakes shrink
+until inflow = evaporation. Drawn as a second terrain mesh worked out in the background.
 """
 
 import heapq
@@ -43,14 +23,7 @@ FLAT_SLOPE = 1e-4          # tiny slope added across lake surfaces so water can 
 
 
 def fill_depressions(heights):
-    """Fill every hollow up to the level where it would spill over (priority-flood).
-
-    Start from the map's edge (water can always leave there) and work inwards, always
-    from the lowest point reached so far. A neighbour that's lower than where we came
-    from must be in a hollow, so it's raised to that level (plus a tiny slope so water
-    can still flow across the lake surface).
-    (Uses plain Python lists instead of NumPy inside the loop: indexing them is faster.)
-    """
+    """Fill every hollow up to the level where it would spill over (priority-flood)."""
     h = np.asarray(heights, dtype=float)
     rows, cols = h.shape
     filled = h.ravel().tolist()
@@ -119,24 +92,7 @@ def flow_amount(heights, downhill, weights=None):
 
 
 def find_water(heights, rain_mm=None, sea_temp=None, rain_map=None):
-    """Where the water is. Returns (surface, lakes, rivers, flow, min_flow, info).
-
-    surface  the terrain with lakes filled to their water level
-    lakes    True where there's a lake deep and big enough to draw
-    rivers   True where enough water drains through to make a river
-    flow     how many points drain through each point
-    min_flow how many points of land a river needs
-    info     {'closed': lakes that don't overflow, 'runoff': mm/yr, 'evaporation': mm/yr}
-
-    rain_map (optional): rain at every point (wind-driven rain); each point then adds its own
-    runoff to the rivers instead of the same amount everywhere.
-
-    Without rain_mm / sea_temp every hollow fills to the brim (a wet climate). With them,
-    each hollow keeps a WATER BALANCE: a lake grows until the water evaporating off its
-    surface equals the water flowing in. Inflow = runoff from its catchment + rain on the
-    lake; outflow = evaporation x lake area. If it can fill to the rim, it overflows and
-    feeds the rivers below; if not, it stays smaller and nothing flows out (like the Dead Sea).
-    """
+    """Where the water is. Returns (filled, lakes, rivers, flow, min_flow, info)."""
     h = np.asarray(heights, dtype=float)
     filled = fill_depressions(h)
     downhill = find_downhill(filled)
@@ -212,14 +168,7 @@ def find_water(heights, rain_mm=None, sea_temp=None, rain_map=None):
 
 
 def connect_diagonals(rivers, flow, filled, downhill):
-    """Make rivers that run diagonally draw as one connected line.
-
-    Water can flow diagonally (8 directions), so a river can be a chain of points that only
-    touch at their corners. The 3D mesh splits each square into two triangles along one
-    diagonal, so chains running along the OTHER diagonal were drawn as separate dots.
-    For every diagonal step, also mark the lower of the two points beside it, so the river
-    is connected side-to-side. (This only changes the drawing, not where water goes.)
-    """
+    """Make rivers that run diagonally draw as one connected line."""
     rows, cols = rivers.shape
     downhill = np.asarray(downhill).ravel()
     src = np.flatnonzero(rivers.ravel() & (downhill >= 0))
@@ -307,15 +256,7 @@ class RiverSystem:
     CACHE_SIZE = 300          # remember the water for this many terrains (each is tiny)
 
     def request(self, heights, key=None, climate_now=(None, None)):
-        """Show the water for these heights, without making the app wait.
-
-        Working out water takes 10-100 ms (more on big grids), so it's done in the
-        background. Until it's ready, the previous water follows the new ground, then the
-        new water appears. key names the terrain (e.g. 'original', or a step): water already
-        worked out for the same key is reused straight away (O, Left/Right are instant).
-        climate_now = (rain mm/yr, sea-level yearly mean temperature, wind strength, wind direction):
-        evaporation, and where the wind drops its rain.
-        """
+        """Show the water for these heights, without making the app wait."""
         h = np.asarray(heights, dtype=float)
         if key is not None:
             key = (key, climate_now)          # the same terrain in another climate has other lakes
