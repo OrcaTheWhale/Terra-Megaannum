@@ -28,6 +28,9 @@ from procedural_noise import create_heightmap
 from terrain_shader import terrain_shader
 from ui import ControlPanel, hud_text
 from water import RiverSystem
+from particle import rain
+from particle import snow
+from particle import wind
 
 app = Ursina(title=f'Math Hacks 2.0 - World in a Box {config.VERSION}', development_mode=False)
 print('World in a Box', config.VERSION)
