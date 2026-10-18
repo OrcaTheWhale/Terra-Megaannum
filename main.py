@@ -28,7 +28,8 @@ from terrain_shader import terrain_shader
 from ui import ControlPanel, hud_text
 from water import RiverSystem
 
-app = Ursina(title='Math Hacks 2.0', development_mode=False)
+app = Ursina(title=f'Math Hacks 2.0 - World in a Box {config.VERSION}', development_mode=False)
+print('World in a Box', config.VERSION)
 print("graphics:", base.win.gsg.driver_renderer)
 
 sensors = SensorReader(config.SENSOR_PORT)     # reads the ESP32 in the background
@@ -36,7 +37,8 @@ sensors.start()
 
 info = Text(position=window.top_left + Vec2(0.02, -0.02))
 busy_text = Text('', origin=(0, 0), y=-0.43, scale=1.3, enabled=False)   # "Calculating likelihood..."
-fps_text = Text('', position=window.bottom_left + Vec2(0.02, 0.05), enabled=False)  # F key
+show_fps = False             # F key: frames per second in the top line of the text
+fps_line = ''
 fps_frames, fps_timer, slowest_frame = 0, 0.0, 0.0
 
 # These are made by start_world() once a map is chosen in the menu. Until then they're None.
@@ -78,8 +80,8 @@ def show(h, water=True, key=None):
     world.set_heights(h)
     if not rivers.enabled:
         return
-    if water:                      # the water is worked out for the terrain being shown
-        rivers.set_heights(h, key if key == 'original' else (sim.timeline, key))
+    if water:                      # the water is worked out (in the background) for this terrain
+        rivers.request(h, key if key == 'original' else (sim.timeline, key))
     else:
         rivers.follow(h)
 
@@ -103,6 +105,7 @@ def toggle_running():
     So: 365 Day steps, then 2 Season steps, then 100 x 1,000 yr... all in one timeline.
     Pressing it during a run pauses; pressing again carries on to the same goal."""
     global running, view_step, likelihood_score, run_goal
+    panel.steps_field.active = False      # stop typing in the steps box
     if running:
         running = False
         show_step(sim.step)               # paused: work the water out properly
@@ -245,9 +248,13 @@ menu = MainMenu(on_start=start_world)
 
 # ---------------------------------------------------------------- keys
 def input(key):
-    global showing_original, speed, manual_warming
-    if sim is None or panel.typing():
-        return          # still in the menu, or typing a number in the steps box: ignore shortcut keys
+    global showing_original, speed, manual_warming, show_fps
+    if sim is None:
+        return          # still in the menu
+    if panel.typing():  # typing a number in the steps box: shortcut keys are ignored...
+        if key in ('enter', 'escape', 'tab'):
+            panel.steps_field.active = False   # ...until Enter (or a click elsewhere)
+        return
     if key == 'space':
         toggle_running()
     elif key == 'r':
@@ -285,7 +292,7 @@ def input(key):
     elif key == 'z':
         sensors.rezero()
     elif key == 'f':
-        fps_text.enabled = not fps_text.enabled
+        show_fps = not show_fps
 
 
 def sensor_lines():
@@ -304,6 +311,7 @@ def sensor_lines():
                     f"(sensor {sensors.temp_change():+.1f}, keys {manual_warming:+.1f})   "
                     f"Snow line: {freezing_m:,.0f} m")
     water_line = (f"Water: lakes {rivers.lake_percent:.1f}% of map, rivers {rivers.river_percent:.1f}%"
+                  f"   worked out {rivers.updates} times{' (working...)' if rivers.job else ''}"
                   f"   (W show/hide)")
     return readings + '\n' + climate_line + '\n' + water_line
 
@@ -316,18 +324,19 @@ def finish_run():
     step_credit = 0
     run_goal = None
     show_step(sim.step)
-    check_likelihood()                    # score the final result automatically
+    if config.AUTO_LIKELIHOOD:
+        check_likelihood()                # score the final result automatically
 
 
 def measure_fps():
     """Frames per second and the slowest frame in the last half second (F to show)."""
-    global fps_frames, fps_timer, slowest_frame
+    global fps_frames, fps_timer, slowest_frame, fps_line
     fps_frames += 1
     fps_timer += time.dt
     slowest_frame = max(slowest_frame, time.dt)
     if fps_timer >= 0.5:
-        fps_text.text = (f'{fps_frames / fps_timer:.0f} FPS   slowest frame {slowest_frame * 1000:.0f} ms'
-                         f'   ({original.shape[0]} x {original.shape[1]} points)')
+        fps_line = (f'{fps_frames / fps_timer:.0f} FPS, slowest frame {slowest_frame * 1000:.0f} ms, '
+                    f'{original.shape[0]} x {original.shape[1]} points')
         fps_frames, fps_timer, slowest_frame = 0, 0.0, 0.0
 
 
@@ -358,9 +367,9 @@ def update():
             finish_run()
 
     if running and not showing_original:
-        # redraw the terrain 10 times a second. Working out the water (filling hollows, adding
-        # up flow) is the slowest part, so while running it only follows the ground, and is
-        # worked out fully every WATER_REDRAW_SECONDS (0 = only when the run pauses or ends)
+        # redraw the terrain 10 times a second. The water is worked out again in the background
+        # every WATER_REDRAW_SECONDS (0 = only when the run pauses or ends); in between, the
+        # last water follows the ground
         redraw_timer += time.dt
         water_timer += time.dt
         if redraw_timer > 0.1:
@@ -398,7 +407,8 @@ def update():
             enabled=panel.enabled(),
             scores=(land_changed, soil_moved, h.sum(), h.std(), original.std()),
             likelihood=likelihood_score, runs=runs_used,
-            speed=f'{config.RUN_SPEEDS[speed]:g} s per run (keys 1 2 3)',
+            speed=f'{config.RUN_SPEEDS[speed]:g} s per run (keys 1 2 3)'
+                  + (f'   |   {fps_line}' if show_fps else f'   |   {config.VERSION}'),
             showing_original=showing_original, sensor_lines=sensor_lines(),
             likelihood_progress=None if likelihood_job is None
             else (likelihood_job.done_runs, likelihood_job.total_runs))

@@ -2,11 +2,13 @@
 ui.py - the control panel (right side) and the information text (top left).
 """
 
+import math
+
 from ursina import Text, Checkbox, Button, ButtonGroup, InputField, window
 
 import climate
 from config import (TIME_STEPS, DEFAULT_TIME_STEP, DEFAULT_STEPS, MAX_STEPS,
-                    ENSEMBLE_RUNS, TOLERANCE)
+                    ENSEMBLE_RUNS, RELATIVE_TOLERANCE)
 from conditions import CONDITIONS
 
 
@@ -74,6 +76,8 @@ class ControlPanel:
     def refresh(self):
         """Update the 'how long' text next to the box."""
         self.total_text.text = '= ' + span_text(self.steps * self.step_days) + ' more'
+        if self.typing():
+            self.total_text.text += '\n(press Enter when done)'
 
 
 
@@ -107,9 +111,12 @@ def hud_text(status, step, latest_step, target, unit, days, sea_temp, below_zero
         likely = f'Likelihood: calculating... {done}/{total} runs'
     elif likelihood is None:
         likely = 'Likelihood: (press L, or finish the run)'
+    elif math.isnan(likelihood):
+        likely = 'Likelihood: nothing has changed enough to score yet'
     else:
         likely = (f'Likelihood of the step {latest_step} result: {likelihood:.0f}%  '
-                  f'({runs} alternative runs, within +-{TOLERANCE:g})')
+                  f'({runs} alternative runs changed the land by the same amount, '
+                  f'within {RELATIVE_TOLERANCE:.0%})')
 
     return (
         f"{status}   Step {step}{target}{looking_back}   next: {unit} steps   {speed}"

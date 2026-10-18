@@ -18,11 +18,12 @@ The water is only drawn - it doesn't move soil yet (that will be a 'Rivers' cond
 
 main.py only needs:
     rivers = RiverSystem(original_heights, scale=config.SCALE)
-    rivers.set_heights(heights, key)   # whenever the terrain is redrawn (key: see set_heights)
+    rivers.request(heights, key)   # whenever the terrain is redrawn (key: see request)
     rivers.update(time.dt)        # every frame (animates the ripples)
 """
 
 import heapq
+import threading
 
 import numpy as np
 from scipy.ndimage import label
@@ -125,7 +126,8 @@ def find_water(heights):
     """
     h = np.asarray(heights, dtype=float)
     filled = fill_depressions(h)
-    flow = flow_amount(filled, find_downhill(filled))
+    downhill = find_downhill(filled)
+    flow = flow_amount(filled, downhill)
     cell_m = config.MAP_WIDTH_M / (h.shape[0] - 1)           # metres between points
     cell_km2 = (cell_m / 1000) ** 2
 
@@ -139,7 +141,37 @@ def find_water(heights):
 
     min_flow = max(2.0, RIVER_MIN_AREA_KM2 / cell_km2)
     rivers = (flow >= min_flow) & ~lakes
+    rivers, flow = connect_diagonals(rivers, flow, filled, downhill)
+    rivers &= ~lakes
     return filled, lakes, rivers, flow, min_flow
+
+
+def connect_diagonals(rivers, flow, filled, downhill):
+    """Make rivers that run diagonally draw as one connected line.
+
+    Water can flow diagonally (8 directions), so a river can be a chain of points that only
+    touch at their corners. The 3D mesh splits each square into two triangles along one
+    diagonal, so chains running along the OTHER diagonal were drawn as separate dots.
+    For every diagonal step, also mark the lower of the two points beside it, so the river
+    is connected side-to-side. (This only changes the drawing, not where water goes.)
+    """
+    rows, cols = rivers.shape
+    downhill = np.asarray(downhill).ravel()
+    src = np.flatnonzero(rivers.ravel() & (downhill >= 0))
+    dst = downhill[src]
+    r0, c0 = np.divmod(src, cols)
+    r1, c1 = np.divmod(dst, cols)
+    diagonal = (r0 != r1) & (c0 != c1)
+    r0, c0, r1, c1, src = r0[diagonal], c0[diagonal], r1[diagonal], c1[diagonal], src[diagonal]
+    # the two corner points beside the diagonal step: (r1, c0) and (r0, c1)
+    use_first = filled[r1, c0] <= filled[r0, c1]
+    cr = np.where(use_first, r1, r0)
+    cc = np.where(use_first, c0, c1)
+    rivers = rivers.copy()
+    flow = flow.copy()
+    rivers[cr, cc] = True
+    flow[cr, cc] = np.maximum(flow[cr, cc], flow.ravel()[src])   # same width as the river
+    return rivers, flow
 
 
 def water_surface(heights):
@@ -190,6 +222,9 @@ class RiverSystem:
         self.entity = FastTerrain(surface, scale=scale, texture=make_flow_texture(),
                                   texture_scale=(6, 6), color=color.white, double_sided=True)
         self.elapsed = 0.0
+        self.job = None           # (thread, heights, key, result) while water is being worked out
+        self.updates = 0          # how many times new water has been shown
+        self.pending = None       # the newest request waiting for its turn
         self.depth = surface - np.asarray(original_heights, dtype=float)
         self.cache = {'original': (surface, 100 * lakes.mean(), 100 * rivers.mean())}   # O key is instant
         self.lake_percent = 100 * lakes.mean()
@@ -198,30 +233,63 @@ class RiverSystem:
 
     CACHE_SIZE = 300          # remember the water for this many terrains (each is tiny)
 
-    def set_heights(self, heights, key=None):
-        """Work out the water for the terrain being shown, and redraw it.
+    def request(self, heights, key=None):
+        """Show the water for these heights, without making the app wait.
 
-        key names this terrain (e.g. 'original', or the step number). Water that was
-        already worked out for the same key is reused, so flipping back and forth
-        (O for the original, Left/Right to look back) doesn't recalculate it every time.
+        Working out water takes 10-100 ms (more on big grids), so it's done in the
+        background. Until it's ready, the previous water follows the new ground, then the
+        new water appears. key names the terrain (e.g. 'original', or a step): water already
+        worked out for the same key is reused straight away (O, Left/Right are instant).
         """
+        h = np.asarray(heights, dtype=float)
         if key is not None and key in self.cache:
-            surface, self.lake_percent, self.river_percent = self.cache[key]
-        else:
-            surface, lakes, rivers = water_surface(heights)
-            self.lake_percent = 100 * lakes.mean()
-            self.river_percent = 100 * rivers.mean()
+            self.pending = None
+            self._show(h, *self.cache[key])
+            return
+        self.follow(h)
+        self.pending = (h.copy(), key)        # only the newest request matters
+        self._start_next()
+
+    def _start_next(self):
+        if self.job is not None or self.pending is None:
+            return
+        h, key = self.pending
+        self.pending = None
+        result = {}
+
+        def work():
+            result['water'] = water_surface(h)
+
+        thread = threading.Thread(target=work, daemon=True)
+        thread.start()
+        self.job = (thread, h, key, result)
+
+    def _poll(self):
+        """Every frame: if a background calculation has finished, show it."""
+        if self.job is None or self.job[0].is_alive():
+            return
+        thread, h, key, result = self.job
+        self.job = None
+        if 'water' in result:
+            surface, lakes, rivers = result['water']
+            entry = (surface, 100 * lakes.mean(), 100 * rivers.mean())
             if key is not None:
                 if len(self.cache) >= self.CACHE_SIZE:
                     self.cache.pop(next(iter(self.cache)))      # forget the oldest one
-                self.cache[key] = (surface, self.lake_percent, self.river_percent)
+                self.cache[key] = entry
+            self._show(h, *entry)
+        self._start_next()                    # a newer request came in meanwhile
+
+    def _show(self, heights, surface, lake_percent, river_percent):
+        self.updates += 1                     # shown on screen, to see the water keeping up
         self.entity.set_heights(surface)
-        self.depth = surface - heights            # remembered for follow()
+        self.depth = surface - heights        # remembered for follow()
+        self.lake_percent = lake_percent
+        self.river_percent = river_percent
 
     def follow(self, heights):
-        """Cheap redraw while the simulation runs: keep the rivers and lakes where they were
-        last worked out, but move them up/down with the changing ground so they don't sink
-        into it or float above it. (A full recalculation happens when the run pauses or ends.)"""
+        """Cheap redraw: keep the rivers and lakes where they were last worked out, but move
+        them up/down with the changing ground so they don't sink into it or float above it."""
         self.entity.set_heights(heights + self.depth)
 
     @property
@@ -233,6 +301,8 @@ class RiverSystem:
         self.entity.enabled = value
 
     def update(self, dt):
-        """Animate the ripples by sliding the texture (cheap: nothing is rebuilt)."""
+        """Every frame: pick up finished water, and animate the ripples by sliding the
+        texture (cheap: nothing is rebuilt)."""
+        self._poll()
         self.elapsed = (self.elapsed + max(0.0, dt) * FLOW_SPEED) % 1.0
         self.entity.texture_offset = (self.elapsed, self.elapsed * 0.4)

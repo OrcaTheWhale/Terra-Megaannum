@@ -139,7 +139,8 @@ check('menu.py', test_menu_present)
 check('TerrainHandler.py', test_terrain_handler)
 check('main.py', test_main_present)
 
-print('\n================ FILE CHECK ================')
+import config
+print(f'\n================ FILE CHECK ({config.VERSION}) ================')
 for name, ok, detail in results:
     print(f"{'PASS' if ok else 'FAIL'}  {name:<18} {detail}")
 failed = [name for name, ok, _ in results if not ok]

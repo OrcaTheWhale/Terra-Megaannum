@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from config import (PARAMS, UNCERTAINTY, HEIGHT_ERROR, ENSEMBLE_RUNS,
-                    ENSEMBLE_TIME_LIMIT, TOLERANCE)
+                    ENSEMBLE_TIME_LIMIT, TOLERANCE, RELATIVE_TOLERANCE, MIN_CHANGE)
 from conditions import run_conditions
 
 
@@ -28,8 +28,10 @@ class LikelihoodJob:
 
     Replays the whole simulation several times, each with slightly different but
     equally believable inputs (parameters nudged within UNCERTAINTY, every starting
-    height nudged by up to HEIGHT_ERROR), then measures how often the runs end up
-    within TOLERANCE of our result. This is a Monte Carlo / ensemble method.
+    height nudged by up to HEIGHT_ERROR). Then, on the land that changed by more than
+    MIN_CHANGE, it measures how often the runs changed it by the same amount (within
+    RELATIVE_TOLERANCE, e.g. 25%). This is a Monte Carlo / ensemble method.
+    The score is NaN if nothing has changed enough to score yet.
 
     Usage:
         job = LikelihoodJob(sim)    # starts straight away, in the background
@@ -89,8 +91,14 @@ class LikelihoodJob:
             self.done_runs += 1
 
         finals = np.array(finals)
-        agree = np.abs(finals - self.target) <= TOLERANCE
-        score = agree.mean() * 100
+        change = self.target - self.original
+        changed = np.abs(change) > MIN_CHANGE              # only score land that really changed
+        if changed.any():
+            allowed = np.maximum(TOLERANCE, RELATIVE_TOLERANCE * np.abs(change[changed]))
+            agree = np.abs(finals[:, changed] - self.target[changed]) <= allowed
+            score = agree.mean() * 100
+        else:
+            score = float('nan')
         spread = finals.std(axis=0)
         print(f'likelihood: {score:.1f}% over {self.total_runs} runs '
               f'({time.perf_counter() - t0:.1f} s)')
@@ -135,7 +143,8 @@ def save_uncertainty_map(spread, score):
         return
     plt.imshow(spread, cmap='magma')
     plt.colorbar(label='disagreement between runs (height units)')
-    plt.title(f'Where the model is least sure (likelihood {score:.0f}%)')
+    label = f'likelihood {score:.0f}%' if score == score else 'nothing changed enough to score'   # NaN != NaN
+    plt.title(f'Where the model is least sure ({label})')
     plt.savefig('uncertainty_map.png')
     plt.close()
     print('saved uncertainty_map.png')

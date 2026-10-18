@@ -3,6 +3,8 @@ config.py - every setting and number in one place.
 Change values here instead of hunting through the other files.
 """
 
+VERSION = 'v5'              # shown in the window title, the terminal and check_files.py
+
 # ---------------------------------------------------------------- maps
 # The maps you can pick in the menu: name -> (heightmap PNG, texture PNG or None).
 # To add one, put the PNGs in this folder (or a maps/ folder) and add a line here.
@@ -54,8 +56,8 @@ SNAPSHOT_MEMORY_MB = 400    # ...but never more steps than fit in this much memo
 # How long a whole run takes to watch, in seconds, for keys 1 / 2 / 3 (however many steps it has).
 RUN_SPEEDS = {'1': 15, '2': 5, '3': 1}
 DEFAULT_SPEED = '2'
-WATER_REDRAW_SECONDS = 0    # while running, work the water out fully this often (it's the slow part).
-                            # 0 = only when a run pauses or ends (smoothest); in between it follows the ground
+WATER_REDRAW_SECONDS = 0.3  # while running, work the water out again this often (in the background,
+                            # so it doesn't slow the app). 0 = only when a run pauses or ends
 
 # ---------------------------------------------------------------- climate (sea level)
 # Replace with real climate normals for your place (average of the 12 monthly averages,
@@ -78,7 +80,13 @@ UNCERTAINTY = {
 }
 
 # ---------------------------------------------------------------- likelihood score
+AUTO_LIKELIHOOD = True      # work out the likelihood automatically when a run ends (False = only with L)
 HEIGHT_ERROR = 1.0          # the PNG stores whole numbers, so each height could be off by up to 1
 ENSEMBLE_RUNS = 20          # how many alternative runs to compare against (at most)
 ENSEMBLE_TIME_LIMIT = 3.0   # seconds: fewer runs are used if 20 would take longer than this
-TOLERANCE = 2.0             # how close (height units) a run must be to count as "the same result"
+# The score only looks at land that changed by more than MIN_CHANGE (unchanged land always
+# "agrees", which made the score look like 100%). A run agrees at a point if it changed it by
+# the same amount, within RELATIVE_TOLERANCE (25%), or within TOLERANCE height units if that's bigger.
+MIN_CHANGE = 2.0            # height units
+RELATIVE_TOLERANCE = 0.25
+TOLERANCE = 1.0             # height units
