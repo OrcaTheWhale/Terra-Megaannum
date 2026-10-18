@@ -8,10 +8,10 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
-from scipy.ndimage import zoom
+from scipy.ndimage import gaussian_filter, zoom
 
 import config
-
+sigma = 2 # for smoothing the pngs by averaging the pixels around each point
 try:
     from noise_map import create_heightmap      # the teammate's simplex-noise generator
 except ImportError as problem:                  # e.g. the 'noise' package isn't installed
@@ -44,7 +44,8 @@ def load_heightmap(filename, size=None):
     if img.size != (size, size):
         img = img.resize([size, size], Image.LANCZOS)
     heights = np.asarray(img).astype(float)
-    return np.swapaxes(np.flip(heights, axis=0), 0, 1)     # same orientation as Ursina uses
+    heights = np.swapaxes(np.flip(heights, axis=0), 0, 1)     # same orientation as Ursina uses
+    return gaussian_filter(heights, sigma=sigma)      # smooth out the jagged edges of a PNG
 
 
 def stand_in_noise(seed, size=64, octaves=5):
@@ -59,18 +60,20 @@ def stand_in_noise(seed, size=64, octaves=5):
     return h
 
 
-def generate_heights(seed, frequency=1.5):
+def generate_heights(seed, res = 128, frequency=1.5, octaves=2):
     """A generated map, the same size as a loaded one (config.GRID_SIZE points across).
 
     The result is stretched so the lowest point is 0 and the highest is 255: then the
     "lowest point" and "highest point" typed in the menu really are the lowest and highest.
     """
-    size = config.GRID_SIZE
+    size = res
     if create_heightmap is not None:
-        h = create_heightmap(seed, width=size, height=size, frequency=frequency)
+        h = create_heightmap(seed, width=size, height=size, frequency=frequency,
+                             octaves=octaves)
         h = np.swapaxes(np.flip(h, axis=0), 0, 1)      # same orientation as a loaded PNG
     else:
-        h = stand_in_noise(seed, size)
+        h = stand_in_noise(seed, size, octaves)
+    gaussian_filter(h, sigma=sigma, output=h)      # smooth out the jagged edges of a PNG
     h = h - h.min()
     return h / max(h.max(), 1e-9) * 255
 

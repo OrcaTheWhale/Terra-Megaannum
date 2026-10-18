@@ -46,6 +46,7 @@ void main() {
 #version 140
 uniform sampler2D grass_tex;
 uniform sampler2D rock_tex;
+uniform sampler2D dirt_tex;
 uniform sampler2D snow_tex;
 uniform float snow_line;
 
@@ -60,12 +61,18 @@ void main() {
     vec4 grass = texture(grass_tex, terrain_uv);
     vec4 rock = texture(rock_tex, terrain_uv);
     vec4 snow = texture(snow_tex, terrain_uv);
+    vec4 dirt = texture(dirt_tex, terrain_uv);
 
-    float rock_amount = smoothstep(0.08, 0.25, steepness);
+    float lowland_dirt = 0.55 * (1.0 - smoothstep(0.2, 0.65, elevation));
+    float slope_dirt = smoothstep(0.04, 0.09, steepness)
+                     * (1.0 - smoothstep(0.15, 0.21, steepness));
+    float dirt_amount = max(lowland_dirt, slope_dirt);
+    float rock_amount = smoothstep(0.18, 0.3, steepness);
     // snow fades in just above the 0 C height; steep rock holds less snow
     float snow_amount = smoothstep(snow_line, snow_line + 0.06, elevation) * (1.0 - 0.6 * rock_amount);
 
-    vec4 ground = mix(grass, rock, rock_amount);
+    vec4 ground = mix(grass, dirt, dirt_amount);
+    ground = mix(ground, rock, rock_amount);
     vec4 colour = mix(ground, snow, snow_amount);
 
     // simple sunlight: slopes facing the sun are brighter

@@ -20,6 +20,7 @@ TERRAIN_TEXTURES = {
     'grass_tex': "assets/textures/Grass002_1K-JPG_Color.jpg",
     'rock_tex': "assets/textures/Rock050_1K-JPG_Color.jpg",
     'snow_tex': "assets/textures/Snow010A_1K-JPG_Color.jpg",
+    'dirt_tex': "assets/textures/Ground048_1K-JPG_Color.jpg"
 }
 GENERATED_COLOR = (0.45, 0.62, 0.38)   # used only if the blend textures can't be found, 0-1 RGB
 
