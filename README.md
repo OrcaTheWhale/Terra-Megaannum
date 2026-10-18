@@ -14,7 +14,7 @@ Preview to see original version
 
 
 
-Achievements/Stuff we did:
+Fixes we did:
 
 - Replaced Ursina’s mesh builder with NumPy calculations that rebuild terrain around 40 times faster by processing the whole grid together and reusing triangle connections and texture coordinates.
 - Height being rounded since PNG's are 8 bit (0-255), so height is converted to decimals at start and never touched by simulation changes.
