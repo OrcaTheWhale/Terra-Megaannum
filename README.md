@@ -1,5 +1,19 @@
 # MathHacks2.0-TempName-
 
+Features:
+Simulates terrain by rendering a height and textured map with the area's lengths and heights, and then running multiple calculations for each condition (erosion, river erosion, tectonic plates).
+Environment conditions: Erosion, River erosion, evaporation, tectonic plates, fire, vegetation, snow
+Hardware connection, so you can affect the system by playing with hardware in real life.
+Likelihood and analysis to show predictions and the estimated correctedness.
+Plotting different graphs and plots to see changes made by the environment conditions.
+Noise map generator
+Weather, climate temperatures, freezing waters
+The worst UI known to man
+Preview to see original version
+
+
+
+
 Achievements/Stuff we did:
 
 - Replaced Ursina’s mesh builder with NumPy calculations that rebuild terrain around 40 times faster by processing the whole grid together and reusing triangle connections and texture coordinates.
