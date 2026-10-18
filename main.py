@@ -27,6 +27,7 @@ app = Ursina(title=f'Math Hacks 2.0 - World in a Box {config.VERSION}', developm
 print('World in a Box', config.VERSION)
 Sky()
 print("graphics:", base.win.gsg.driver_renderer)
+Sky()
 
 sensors = SensorReader(config.SENSOR_PORT)     # reads the ESP32 in the background
 sensors.start()
@@ -158,7 +159,7 @@ def toggle_running():
         run_goal = None                   # the number in the box changed while paused: a new run
     if run_goal is None or sim.step >= run_goal:          # a new run
         if sim.step >= config.MAX_STEPS:
-            print(f'reached the limit of {config.MAX_STEPS} steps - press R to reset, '
+            print(f'reached the limit of {config.MAX_STEPS} steps - p s R to reset, '
                   f'or use longer steps')
             return
         nonstop = panel.nonstop

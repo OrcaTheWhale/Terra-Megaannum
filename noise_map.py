@@ -7,8 +7,16 @@ from noise import snoise2
 from PIL import Image
 
 
-def create_heightmap(seed, width=1000, height=1000, frequency=1.5, octaves=2):
-    """A grid of heights from 0 to 255."""
+def create_heightmap(seed, width=1000, height=1000, frequency=1.5):
+    """A grid of heights from 0 to 255.
+
+    seed       which map you get (same seed = same map)
+    frequency  higher values make more steeper and taller hills, while lower values
+               make less smoother hills
+
+    The noise is smooth and continuous, so a small grid (e.g. 64 x 64) shows the same
+    landscape as a big one, just with less detail - and is much faster to make.
+    """
     value = np.zeros((height, width))   # decimals instead of whole numbers, so nothing is rounded off
     for y in range(height):
         for x in range(width):
