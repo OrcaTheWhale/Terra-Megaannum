@@ -1,5 +1,6 @@
 # MathHacks2.0-Terra Megaannum-
-
+### A simulated environment with realistic conditions, over long periods of time to educate about erosion.  
+[Example](https://files.catbox.moe/i0abo6.gif)
 Features:
 Simulates terrain by rendering a height and textured map with the area's lengths and heights, and then running multiple calculations for each condition (erosion, river erosion, tectonic plates).
 Environment conditions: Erosion, River erosion, evaporation, tectonic plates, fire, vegetation, snow
