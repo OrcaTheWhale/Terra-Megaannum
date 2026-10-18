@@ -12,7 +12,7 @@ match config.py, so main.py can copy them straight into config.
 
 import random
 
-from ursina import Entity, Text, Button, ButtonGroup, InputField, Texture, camera, color
+from ursina import Entity, Slider, Text, Button, ButtonGroup, InputField, Texture, camera, color
 
 import config
 import maps
@@ -24,6 +24,7 @@ SETTINGS = [
     ('MAX_ELEVATION_M', 'Highest point (m)'),
     ('AVG_TEMP_C', 'Average temperature (C)'),
     ('SEASON_SWING_C', 'Summer/winter swing (C)'),
+    ('ANNUAL_RAIN_MM', 'Yearly rain (mm)'),
 ]
 
 
@@ -49,11 +50,21 @@ class MainMenu(Entity):
         self.seed_field.text = '1'
         Button('New seed', parent=self, scale=(0.14, 0.04), position=(x + 0.22, seed_y - 0.05),
                on_click=self.new_seed)
-        Text('Frequency (higher = steeper hills):', parent=self, position=(x, seed_y - 0.1))
+
+        Text('Resolution (higher = bigger more detailed map):', parent=self, position=(x, seed_y - 0.1))
+        self.res_field = Slider(parent=self, min=128, max=512, default=128, step=128,
+                                scale=(0.7, 0.7), position=(x, seed_y - 0.17))
+
+        Text('Frequency (higher = steeper hills):', parent=self, position=(x, seed_y - 0.2))
         self.frequency_field = InputField(parent=self, default_value='1.5', character_limit=5,
                                           limit_content_to='0123456789.',
-                                          scale=(0.12, 0.04), position=(x + 0.06, seed_y - 0.15))
-        self.frequency_field.text = '1.5'
+                                          scale=(0.12, 0.04), position=(x + 0.06, seed_y - 0.25))
+        self.frequency_field.text = '2'
+        Text('Octaves (more = more detailed):', parent=self, position=(x, seed_y - 0.3))
+        self.octaves_field = InputField(parent=self, default_value='4', character_limit=5,
+                                        limit_content_to='0123456789.',
+                                        scale=(0.12, 0.04), position=(x + 0.06, seed_y - 0.35))
+        self.octaves_field.text = '4'
 
         # ---- preview of the chosen map (middle)
         self.preview = Entity(parent=self, model='quad', scale=0.42, position=(-0.02, -0.02))
@@ -96,22 +107,40 @@ class MainMenu(Entity):
         except ValueError:                 # empty box or just "."
             return 1.5
 
+    def octaves(self):
+        try:
+            return max(1, int(self.octaves_field.text))
+        except ValueError:                 # an empty box falls back to the default
+            return 2
+
+    def res(self):
+        try:
+            return max(1, int(self.res_field.value))
+        except ValueError:                 # an empty box falls back to the default
+            return 2
+
     def update(self):
-        """Every frame: if the chosen map, seed or frequency changed, load it and update the preview."""
+        """Update the preview after generated-map settings are no longer being edited."""
         if not self.enabled:
             return
         choice = self.map_choice.value
         generated = choice == maps.GENERATED
-        wanted = (choice, self.seed() if generated else None, self.frequency() if generated else None)
+        if generated and (
+                self.res_field.knob.dragging
+                or any(field.active for field in (
+                    self.seed_field, self.frequency_field, self.octaves_field))):
+            return
+        wanted = (choice, self.seed() if generated else None, self.res() if generated else None, self.frequency() if generated else None, self.octaves() if generated else None)
         if wanted == self.shown:
             return
         self.shown = wanted
         try:
             if generated:
-                self.heights = maps.generate_heights(self.seed(), self.frequency())
+                self.heights = maps.generate_heights(
+                    self.seed(), self.res(), self.frequency(), self.octaves())
                 self.texture_file = None
                 self.preview.texture = Texture(maps.preview_image(self.heights))
-                self.preview_text.text = f'Generated map, seed {self.seed()}, frequency {self.frequency():g}'
+                self.preview_text.text = f'Generated map, seed {self.seed()}, frequency {self.frequency()}, octaves {self.octaves():g}'
             else:
                 heightmap, self.texture_file = config.MAPS[choice]
                 self.heights = maps.load_heightmap(heightmap)
@@ -140,9 +169,15 @@ class MainMenu(Entity):
             return None, 'Highest point must be higher than the lowest point'
         if settings['SEASON_SWING_C'] < 0:
             return None, 'Summer/winter swing cannot be negative'
+        if settings['ANNUAL_RAIN_MM'] < 0:
+            return None, 'Yearly rain cannot be negative'
         return settings, None
 
     def start(self):
+        # START pressed while still typing a seed / frequency / octaves: use what's typed
+        for field in (self.seed_field, self.frequency_field, self.octaves_field):
+            field.active = False
+        self.update()
         if self.heights is None:
             self.error_text.text = 'Choose a map that loads first'
             return
@@ -155,5 +190,5 @@ class MainMenu(Entity):
 
     def typing(self):
         """True while any box in the menu is being typed in."""
-        boxes = [self.seed_field, self.frequency_field] + list(self.fields.values())
+        boxes = [self.seed_field, self.frequency_field, self.octaves_field, self.res_field] + list(self.fields.values())
         return self.enabled and any(box.active for box in boxes)

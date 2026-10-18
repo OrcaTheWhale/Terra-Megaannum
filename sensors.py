@@ -29,10 +29,17 @@ COLUMNS = ['tag', 'ms', 'temp', 'hum', 'light', 'flame', 'tilt', 'dir']
 # Measure these on the day and adjust.
 CALIBRATION = {
     'light': (4095, 0),    # our photoresistor reads LOWER in bright light
-    'flame': (4095, 0),    # flame sensor reads lower near a flame / IR remote
-    'hum':   (40, 90),     # room air -> breathed on
-    'tilt':  (0, 30),      # hanging still -> blown hard (degrees)
+    'tilt':  (0, 30),      # joystick centred -> pushed all the way (the ESP32 sends 0-30)
 }
+
+# ZERO POINT: when the simulation starts (and with the Z key) every sensor's reading is saved
+# as its zero point, and the app reacts to CHANGES from it. So the room's own temperature,
+# humidity and light don't matter, and the flame sensor works whichever way it's wired.
+HUM_PER_EXTRA_RAIN = 3.0   # % humidity above the zero point that adds 1x the menu's rain
+                           # (breathe on it: +4% -> 2x rain, +7% -> 3x). Lower = more sensitive.
+HUM_DEADBAND = 1.0         # ignore changes this small (the DHT11 only reads whole %)
+LIGHT_GAIN = 2.0           # sunlight multiplier change per 1.0 of light change (0-1 scale)
+FIRE_RISE = 0.3            # flame reading must move this share of the way to its far end to be "fire"
 
 SMOOTHING = 0.2            # 0..1: lower = smoother but slower to react
 BAUD = 115200
@@ -65,7 +72,7 @@ class SensorReader:
         self.last_time = 0.0
         self.lines = 0
         self.error = ''
-        self.start_temp = None       # temperature when the app started (for temp_change)
+        self.base = {}               # zero point of each sensor (see ZERO POINT above)
 
     def start(self):
         threading.Thread(target=self._run, daemon=True).start()
@@ -87,16 +94,50 @@ class SensorReader:
         lo, hi = CALIBRATION.get(name, (0, 4095))
         return min(1.0, max(0.0, (self.values[name] - lo) / (hi - lo)))
 
-    def temp_change(self):
-        """How many degrees warmer (+) or colder (-) than when the app started."""
-        if self.start_temp is None or 'temp' not in self.values:
+    def change(self, name):
+        """How far a sensor has moved from its zero point (0 until it has a reading).
+        The first reading becomes the zero point if rezero() hasn't set one yet."""
+        if name not in self.values:
             return 0.0
-        return self.values['temp'] - self.start_temp
+        base = self.base.setdefault(name, self.values[name])
+        return self.values[name] - base
+
+    def temp_change(self):
+        """How many degrees warmer (+) or colder (-) than at the zero point."""
+        return self.change('temp')
+
+    def rain_factor(self):
+        """Humidity change -> rain multiplier: 1 at the zero point, up to 3x breathed on,
+        down to 0.25x in drier air."""
+        d = self.change('hum')
+        d = math.copysign(max(0.0, abs(d) - HUM_DEADBAND), d)
+        return min(3.0, max(0.25, 1 + d / HUM_PER_EXTRA_RAIN))
+
+    def sunlight(self):
+        """Light change -> how fast plants grow: 1 at the zero point, 0.3 (covered) to 1.7 (torch)."""
+        if 'light' not in self.values:
+            return 1.0
+        lo, hi = CALIBRATION['light']
+        base = (self.base.setdefault('light', self.values['light']) - lo) / (hi - lo)
+        return min(1.7, max(0.3, 1 + LIGHT_GAIN * (self.norm('light') - base)))
+
+    def fire_level(self):
+        """0-1: how far the flame reading has moved from its zero point toward its far end.
+        Works whether the module reads lower (most) or higher near a flame: it looks at
+        which end the zero point is closer to and measures the change toward the other end."""
+        if 'flame' not in self.values:
+            return 0.0
+        base = self.base.setdefault('flame', self.values['flame'])
+        now = self.values['flame']
+        if base >= 2048:
+            level = (base - now) / max(base, 1)              # reads lower near a flame
+        else:
+            level = (now - base) / max(4095 - base, 1)       # reads higher near a flame
+        return min(1.0, max(0.0, level))
 
     def rezero(self):
-        """Treat the current temperature as 'no change' again."""
-        if 'temp' in self.values:
-            self.start_temp = self.values['temp']
+        """Save every sensor's current reading as its zero point (simulation start, or Z)."""
+        self.base = dict(self.values)
 
     def wind(self):
         """(strength 0..1, direction in degrees or None)."""
@@ -134,8 +175,6 @@ class SensorReader:
                 else:
                     old = self.values[name]
                     self.values[name] = old + SMOOTHING * (value - old)
-            if self.start_temp is None and 'temp' in self.values:
-                self.start_temp = self.values['temp']
             self.lines += 1
             self.last_time = time.time()
             self.error = ''
@@ -153,7 +192,8 @@ if __name__ == '__main__':
             print('waiting for ESP32...', reader.error)
             continue
         strength, direction = reader.wind()
-        print(f"temp {reader.get('temp'):5.1f} C (change {reader.temp_change():+.1f})  "
-              f"hum {reader.get('hum'):4.0f}% (rain {reader.norm('hum'):.2f})  "
-              f"light {reader.norm('light'):.2f}  flame {reader.norm('flame'):.2f}  "
+        print(f"temp {reader.get('temp'):5.1f} C ({reader.temp_change():+.1f})  "
+              f"hum {reader.get('hum'):4.0f}% ({reader.change('hum'):+.1f}, rain x{reader.rain_factor():.2f})  "
+              f"light raw {reader.get('light'):4.0f} (sun x{reader.sunlight():.2f})  "
+              f"flame raw {reader.get('flame'):4.0f} (fire {reader.fire_level():.2f})  "
               f"wind {strength:.2f} toward {direction if direction is not None else '-'}")

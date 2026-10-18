@@ -3,12 +3,15 @@ main.py - starts the app and runs the main loop. Run:  python main.py
 
 Where things live:
     config.py        settings and numbers
-    conditions.py    the physics (soil creep; add rain, wind... here)
+    conditions.py    the physics: soil creep, tectonic uplift (add new conditions here)
+    erosion.py       river erosion + sediment (the 'River erosion' condition)
     climate.py       seasons and temperature
     simulation.py    time, steps, history, looking back
     analysis.py      scores, likelihood, charts and maps
     ui.py            control panel and information text
     water.py         rivers and lakes (where the rain goes), drawn on top of the terrain
+    weather.py       rain, snow, wind and fire effects
+    vegetation.py    plants growing, protecting soil; fire burns them (the 'Vegetation' condition)
     menu.py          the main menu (choose a map, describe the place)
     maps.py          loading heightmap PNGs and generating noise maps
     TerrainHandler.py  fast 3D drawing
@@ -21,16 +24,22 @@ import analysis
 import climate
 import config
 from menu import MainMenu
+import sensors as sensors_module
 from sensors import SensorReader
 from simulation import Simulation
 from TerrainHandler import FastTerrain
-from procedural_noise import create_heightmap
 from terrain_shader import terrain_shader
 from ui import ControlPanel, hud_text
 from water import RiverSystem
+from weather import Weather
+import vegetation
+import rain
+import numpy as np
+from PIL import Image
 
 app = Ursina(title=f'Math Hacks 2.0 - World in a Box {config.VERSION}', development_mode=False)
 print('World in a Box', config.VERSION)
+Sky()
 print("graphics:", base.win.gsg.driver_renderer)
 
 sensors = SensorReader(config.SENSOR_PORT)     # reads the ESP32 in the background
@@ -48,6 +57,7 @@ sim = None
 world = None
 ghost = None
 rivers = None
+weather = None
 panel = None
 
 # ---------------------------------------------------------------- state
@@ -57,6 +67,8 @@ showing_original = False
 speed = config.DEFAULT_SPEED  # key in config.RUN_SPEEDS: how many seconds a whole run takes to watch
 step_credit = 0.0            # steps owed so far this run (fractions carry over between frames)
 run_goal = None              # the step number the current run stops at (None = no run going)
+nonstop = False              # 0 in the steps box: run until paused (continuous mode)
+run_box = None               # what the steps box said when the current run started
 redraw_timer = 0
 water_timer = 0
 hud_timer = 0
@@ -64,7 +76,17 @@ likelihood_score = None
 spread = None
 runs_used = 0
 manual_warming = 0.0         # Up/Down keys add or remove warming by hand (works without sensors)
+manual_rain = 0.0            # [ and ] keys add or remove yearly rain by hand (mm)
+last_water_climate = None    # the climate the water was last worked out for
+veg_shown = None             # which plant map the terrain is showing (so it's only redrawn on change)
+fires = 0                    # goes up each time fire burns plants (to redraw the plant map)
 likelihood_job = None        # the likelihood calculation running in the background, if any
+manual_wind = config.WIND_STRENGTH       # Y key cycles the wind strength (when there's no joystick)
+manual_wind_toward = config.WIND_TOWARD_DEG   # J / K keys turn the wind (when the joystick gives no direction)
+orbit = None                 # the camera controller (EditorCamera)
+auto_orbit = False           # X key: the camera circles the map slowly by itself
+panel_widgets = []           # the control panel's buttons and text (H hides them)
+ui_hidden = False            # H key: hide all text and buttons, for a clean view of the map
 
 
 def shown_step():
@@ -75,14 +97,46 @@ def shown_heights():
     return sim.heights if view_step is None else sim.heights_at(view_step)
 
 
+def rain_mm():
+    """Yearly rain (mm): from the menu, scaled by the humidity sensor, plus the [ ] keys."""
+    rain = config.ANNUAL_RAIN_MM
+    if sensors.has('hum'):
+        rain *= sensors.rain_factor()   # humidity vs the zero point: drier 0.25x ... breathed on 3x
+    return max(0.0, rain + manual_rain)
+
+
+def current_wind():
+    """(strength 0-1, direction it blows TOWARD in degrees): the joystick if connected, else the keys."""
+    if sensors.has('tilt'):
+        strength, direction = sensors.wind()
+        return strength, (manual_wind_toward if direction is None else direction)
+    return manual_wind, manual_wind_toward
+
+
+def water_climate():
+    """What the lakes depend on: (yearly rain, yearly mean sea-level temperature, wind strength,
+    wind direction), rounded so tiny sensor wobbles don't make the water recalculate all the time."""
+    strength, toward = current_wind()
+    return (round(rain_mm(), -1), round(config.AVG_TEMP_C + climate.warming_c, 1),
+            round(strength, 1), round(toward / 15) * 15 % 360)
+
+
+def rain_here(h):
+    """Yearly rain at every point of these heights: wind-driven rain (rain.py)."""
+    strength, toward = current_wind()
+    return rain.rain_map(h, sim.cell_m, rain_mm(), strength, toward)
+
+
 def show(h, water=True, key=None):
     """Draw these heights. key names them for the water cache: 'original' or a step number.
     water=False: don't work the water out again, just move it with the ground (cheap)."""
+    global last_water_climate
     world.set_heights(h)
     if not rivers.enabled:
         return
     if water:                      # the water is worked out (in the background) for this terrain
-        rivers.request(h, key if key == 'original' else (sim.timeline, key))
+        last_water_climate = water_climate()
+        rivers.request(h, key if key == 'original' else (sim.timeline, key), last_water_climate)
     else:
         rivers.follow(h)
 
@@ -105,7 +159,7 @@ def toggle_running():
     """Start adds the number of steps in the box (of the chosen length) to wherever you are.
     So: 365 Day steps, then 2 Season steps, then 100 x 1,000 yr... all in one timeline.
     Pressing it during a run pauses; pressing again carries on to the same goal."""
-    global running, view_step, likelihood_score, run_goal
+    global running, view_step, likelihood_score, run_goal, nonstop, run_box
     panel.steps_field.active = False      # stop typing in the steps box
     if running:
         running = False
@@ -116,12 +170,17 @@ def toggle_running():
         run_goal = None
         print(f'continuing from step {sim.step}')
     view_step = None
+    if run_box != panel.steps_field.text:
+        run_goal = None                   # the number in the box changed while paused: a new run
     if run_goal is None or sim.step >= run_goal:          # a new run
         if sim.step >= config.MAX_STEPS:
             print(f'reached the limit of {config.MAX_STEPS} steps - press R to reset, '
                   f'or use longer steps')
             return
-        run_goal = min(sim.step + panel.steps, config.MAX_STEPS)
+        nonstop = panel.nonstop
+        run_box = panel.steps_field.text
+        # nonstop: keep going until paused, or until the memory for looking back is full
+        run_goal = config.MAX_STEPS if nonstop else min(sim.step + panel.steps, config.MAX_STEPS)
     likelihood_score = None               # the result is about to change
     stop_likelihood()
     running = True
@@ -139,6 +198,7 @@ def reset():
     global running, view_step, likelihood_score, spread, run_goal
     stop_likelihood()
     sim.reset()
+    sensors.rezero()                      # fresh zero point for the sensors too
     running = False
     run_goal = None
     view_step = None
@@ -184,20 +244,79 @@ def make_world(heights, texture):
 
     textures = {name: load_texture(path) for name, path in config.TERRAIN_TEXTURES.items()}
     missing = [config.TERRAIN_TEXTURES[name] for name, tex in textures.items() if tex is None]
-    if missing:                       # e.g. the textures folder isn't there: plain colour + lighting
-        print('textures not found, using a plain colour:', missing)
-        from ursina.shaders import basic_lighting_shader
-        return FastTerrain(heights, color=color.rgb(*config.GENERATED_COLOR),
-                           shader=basic_lighting_shader, scale=config.SCALE, double_sided=True)
+    if missing:
+        # e.g. the textures folder was renamed: use plain colours instead, but keep the shader,
+        # so snow, rock and plants still show. Fix the paths in config.TERRAIN_TEXTURES.
+        print('\n*** TEXTURES NOT FOUND - using plain colours. Check TERRAIN_TEXTURES in config.py:')
+        for path in missing:
+            print('   ', path)
+        plain = {'grass_tex': [c * 255 for c in config.GENERATED_COLOR],
+                 'rock_tex': (120, 108, 96), 'snow_tex': (245, 248, 252),
+                 'dirt_tex': (125, 100, 72)}
+        for name in textures:
+            if textures[name] is None:
+                textures[name] = Texture(Image.new('RGB', (4, 4), tuple(int(v) for v in plain[name])))
 
     terrain = FastTerrain(heights, scale=config.SCALE, double_sided=True, shader=terrain_shader)
     for name, tex in textures.items():
         tex.filtering = 'mipmap'      # pre-shrunk copies for distant slopes: faster, and no shimmering
         terrain.set_shader_input(name, tex)
     terrain.set_shader_input('snow_line', 2.0)          # no snow until the climate sets it
+    terrain.set_shader_input('veg_on', 0.0)             # plant map arrives once vegetation runs
+    terrain.set_shader_input('veg_tex', Texture(Image.new('L', (4, 4), 255)))
     real_height = config.MAX_ELEVATION_M - config.MIN_ELEVATION_M
     terrain.set_shader_input('height_ratio', real_height / config.MAP_WIDTH_M)
     return terrain
+
+
+def mean_temp():
+    """Yearly mean sea-level temperature now (plants respond to the yearly climate)."""
+    return config.AVG_TEMP_C + climate.warming_c
+
+
+def update_vegetation():
+    """Start the plant map if needed, burn plants where there's a fire, and show the plant map."""
+    global veg_shown, fires
+    if 'Vegetation' in panel.enabled() and sim.state.get('veg') is None and view_step is None:
+        # before the first step: a mature landscape for today's climate
+        sim.state['veg'] = vegetation.capacity(sim.heights, sim.cell_m, mean_temp(), rain_here(sim.heights))
+        if sim.step == 0:
+            sim.veg_snapshots[0] = (sim.state['veg'] * 255).astype(np.uint8)
+
+    # fire (flame sensor or B): burns the plants around the fire, on the latest step only
+    if (weather.burning() and weather.fire_spot and view_step is None
+            and not showing_original and sim.state.get('veg') is not None):
+        x, z = weather.fire_spot
+        sim.state['veg'] = vegetation.burn(sim.state['veg'], sim.heights.shape,
+                                           x / config.SCALE[0] + 0.5, z / config.SCALE[2] + 0.5)
+        fires += 1
+
+    step = 0 if showing_original else shown_step()
+    veg = sim.veg_at(step)
+    key = (sim.timeline, step, sim.version, fires, veg is None)
+    if key == veg_shown:
+        return
+    veg_shown = key
+    if veg is None:
+        world.set_shader_input('veg_on', 0.0)
+        return
+    picture = np.flip(np.swapaxes(veg, 0, 1), axis=0)      # same orientation as the terrain
+    tex = Texture(Image.fromarray((picture * 255).astype(np.uint8)))
+    tex.filtering = 'bilinear'
+    world.set_shader_input('veg_tex', tex)
+    world.set_shader_input('veg_on', 1.0)
+
+
+def plant_line():
+    """One line of text about the plants."""
+    veg = sim.veg_at(0 if showing_original else shown_step())
+    if veg is None:
+        return 'Plants: tick Vegetation to grow them   (B fire)'
+    cap = vegetation.capacity(shown_heights(), sim.cell_m, mean_temp(), rain_here(shown_heights()))
+    burned = ((veg < 0.3 * cap) & (cap > 0.3)).mean() * 100
+    burn_text = f', {burned:.1f}% of the map burned (rivers erode faster there)' if burned > 0.05 else ''
+    return (f"Plants: {veg.mean() * 100:.0f}% cover, sunlight x{climate.sunlight:.1f} (light sensor)"
+            f"{burn_text}   (B fire)")
 
 
 def live_sea_temp(step):
@@ -218,7 +337,8 @@ def live_sea_temp(step):
 
 def start_world(heights, texture, settings):
     """Called by the menu's START button: build the terrain, simulation and control panel."""
-    global original, sim, world, ghost, rivers, panel
+    global original, sim, world, ghost, rivers, weather, panel, orbit
+    sensors.rezero()                          # every sensor's reading right now = "no change"
 
     for name, value in settings.items():      # the numbers typed in the menu replace config.py's
         setattr(config, name, value)
@@ -233,15 +353,21 @@ def start_world(heights, texture, settings):
     world = make_world(original, texture)
     ghost = FastTerrain(original, scale=config.SCALE, wireframe=True,
                         color=color.rgba(1, 1, 1, 0.35), enabled=False)
-    rivers = RiverSystem(original, scale=config.SCALE)    # water.py owns all river behaviour
+    rivers = RiverSystem(original, scale=config.SCALE,    # water.py owns all river behaviour
+                         climate_now=water_climate())
+    weather = Weather(config.SCALE, sensors)              # weather.py: rain, snow, wind, fire
+    weather.enabled = config.WEATHER_ON
 
     camera.position = (0, 0, -110)
     orbit = EditorCamera()
     orbit.smoothing_helper.rotation_x = 50
 
+    before = set(camera.ui.children)
     panel = ControlPanel(on_start_pause=toggle_running, on_reset=reset,
                          on_prev=lambda: step_view(-1), on_next=lambda: step_view(1),
                          on_likelihood=check_likelihood)
+    # everything the panel just added to the screen, so H can hide it all (works with any ui.py)
+    panel_widgets[:] = [e for e in camera.ui.children if e not in before]
 
 
 menu = MainMenu(on_start=start_world)
@@ -249,7 +375,8 @@ menu = MainMenu(on_start=start_world)
 
 # ---------------------------------------------------------------- keys
 def input(key):
-    global showing_original, speed, manual_warming, show_fps
+    global showing_original, speed, manual_warming, show_fps, manual_rain
+    global manual_wind, manual_wind_toward, auto_orbit, ui_hidden
     if sim is None:
         return          # still in the menu
     if panel.typing():  # typing a number in the steps box: shortcut keys are ignored...
@@ -292,8 +419,30 @@ def input(key):
         manual_warming -= 0.5
     elif key == 'z':
         sensors.rezero()
+    elif key in ('[', '[ hold', 'left bracket', 'left bracket hold'):
+        manual_rain = max(-config.ANNUAL_RAIN_MM, manual_rain - 100)     # drier
+    elif key in (']', '] hold', 'right bracket', 'right bracket hold'):
+        manual_rain += 100                                               # wetter
     elif key == 'f':
         show_fps = not show_fps
+    elif key == 'v':
+        weather.enabled = not weather.enabled
+    elif key == 'b':
+        weather.manual_fire = not weather.manual_fire     # test the fire without the flame sensor
+    elif key == 'y':                                      # wind strength: calm -> breeze -> windy -> storm
+        levels = [0.0, 0.3, 0.6, 1.0]
+        manual_wind = levels[(min(range(4), key=lambda i: abs(levels[i] - manual_wind)) + 1) % 4]
+    elif key in ('j', 'j hold'):
+        manual_wind_toward = (manual_wind_toward - 15) % 360     # turn the wind
+    elif key in ('k', 'k hold'):
+        manual_wind_toward = (manual_wind_toward + 15) % 360
+    elif key == 'x':
+        auto_orbit = not auto_orbit                       # camera slowly circles the map
+    elif key == 'h':                                      # hide / show all text and buttons
+        ui_hidden = not ui_hidden
+        info.enabled = not ui_hidden
+        for widget in panel_widgets:
+            widget.enabled = not ui_hidden
 
 
 def sensor_lines():
@@ -301,20 +450,34 @@ def sensor_lines():
     if sensors.connected():
         strength, direction = sensors.wind()
         wind = f'{strength:.2f}' + (f' toward {direction:.0f} deg' if direction is not None else '')
-        readings = (f"Sensors ({sensors.port}): temp {sensors.get('temp'):.1f} C | "
-                    f"rain {sensors.norm('hum'):.2f} | sun {sensors.norm('light'):.2f} | "
-                    f"fire {sensors.norm('flame'):.2f} | wind {wind}")
+        readings = (f"Sensors ({sensors.port}, Z = zero): temp {sensors.get('temp'):.1f} C | "
+                    f"humidity {sensors.change('hum'):+.0f}% -> rain x{sensors.rain_factor():.1f} | "
+                    f"sun x{sensors.sunlight():.1f} | fire {sensors.fire_level():.2f} "
+                    f"(burns at {sensors_module.FIRE_RISE:.2f}) | wind {wind}")
     else:
         readings = f"Sensors: not connected ({sensors.error or 'connecting...'})"
     sea_temp = live_sea_temp(shown_step())
     freezing_m = sea_temp / climate.LAPSE_RATE
     climate_line = (f"Climate: {climate.warming_c:+.1f} C vs normal "
                     f"(sensor {sensors.temp_change():+.1f}, keys {manual_warming:+.1f})   "
-                    f"Snow line: {freezing_m:,.0f} m")
+                    f"Snow line: {freezing_m:,.0f} m   Rain: {rain_mm():.0f} mm/yr ([ ] keys)")
+    info = rivers.info or {}
+    balance = ''
+    if info.get('evaporation') is not None:
+        balance = (f"   evaporation {info['evaporation']:.0f} mm/yr, runoff {info['runoff']:.0f} mm/yr, "
+                   f"{info['closed']} lakes don't overflow")
+    strength, toward = current_wind()
+    source = 'joystick' if sensors.has('tilt') else 'Y strength, J K turn'
+    if strength >= 0.05:
+        h = shown_heights()
+        wet, dry = rain.describe(rain_here(h), h, sim.cell_m, toward)
+        wind_line = (f"Wind: {rain.wind_speed_ms(strength):.0f} m/s toward {toward:.0f} deg ({source})   "
+                     f"rain on windward slopes {wet:.0f} mm/yr, rain shadow {dry:.0f} mm/yr\n")
+    else:
+        wind_line = f"Wind: calm, rain falls evenly ({source})\n"
     water_line = (f"Water: lakes {rivers.lake_percent:.1f}% of map, rivers {rivers.river_percent:.1f}%"
-                  f"   worked out {rivers.updates} times{' (working...)' if rivers.job else ''}"
-                  f"   (W show/hide)")
-    return readings + '\n' + climate_line + '\n' + water_line
+                  f"{balance}   (W show/hide)")
+    return readings + '\n' + climate_line + '\n' + wind_line + water_line + '\n' + plant_line()
 
 
 # ---------------------------------------------------------------- main loop
@@ -350,6 +513,11 @@ def update():
 
     # the sensor's temperature change (plus the Up/Down keys) shifts the whole climate
     climate.warming_c = sensors.temp_change() + manual_warming
+    climate.rain_mm = rain_mm()                     # the simulation's rivers use it too
+    climate.sunlight = sensors.sunlight() if sensors.has('light') else 1.0
+    climate.wind_strength, climate.wind_toward = current_wind()   # moves the rain around (rain.py)
+    if auto_orbit and orbit is not None:
+        orbit.smoothing_helper.rotation_y += config.AUTO_ORBIT_SPEED * time.dt
     collect_likelihood()
     rivers.update(time.dt)
 
@@ -357,7 +525,10 @@ def update():
         # Steps per second are set so the whole run takes RUN_SPEEDS[speed] seconds to watch,
         # whether it's 10 steps or 1000. (Before, it was 1 step per frame, so a 1000-step run
         # took ~17 s at 60 fps even though each step only takes a fraction of a millisecond.)
-        step_credit += panel.steps / config.RUN_SPEEDS[speed] * time.dt
+        if nonstop:
+            step_credit += config.NONSTOP_SPEEDS[speed] * time.dt     # steady steps per second
+        else:
+            step_credit += panel.steps / config.RUN_SPEEDS[speed] * time.dt
         frame_start = time.perf_counter()
         while step_credit >= 1 and sim.step < run_goal:
             sim.advance(panel.step_days, panel.enabled())
@@ -365,6 +536,8 @@ def update():
             if time.perf_counter() - frame_start > 0.02:   # never spend more than 20 ms per frame
                 break
         if sim.step >= run_goal:              # added all the steps asked for
+            if nonstop:
+                print(f'nonstop run stopped: reached {config.MAX_STEPS} steps (the memory for looking back is full)')
             finish_run()
 
     if running and not showing_original:
@@ -390,6 +563,13 @@ def update():
         land_changed, soil_moved = analysis.change_scores(h, original)
         sea_temp = live_sea_temp(step)
         world.set_shader_input('snow_line', climate.snow_line(sea_temp))   # snow follows the climate
+        rivers.entity.set_shader_input('freeze_line', climate.snow_line(sea_temp))   # lakes above it freeze
+        weather.set_state(h, climate.snow_line(sea_temp), rain_mm(), rain_here(h))   # snow above, rain below
+        update_vegetation()
+        if not running and water_climate() != last_water_climate:
+            # rain or temperature changed (sensor or keys): lakes grow or shrink
+            show(original if showing_original else shown_heights(),
+                 key='original' if showing_original else shown_step())
 
         if running:
             status = 'RUNNING'
@@ -402,16 +582,19 @@ def update():
 
         info.text = hud_text(
             status=status, step=step, latest_step=sim.step,
-            target=f' / {run_goal}' if run_goal is not None else '',
+            target='' if run_goal is None else (' (nonstop)' if nonstop else f' / {run_goal}'),
             unit=panel.unit, days=sim.days_at(step), sea_temp=sea_temp,
             below_zero=climate.freezing_fraction(h, sea_temp) * 100,
             enabled=panel.enabled(),
-            scores=(land_changed, soil_moved, h.sum(), h.std(), original.std()),
+            scores=(land_changed, soil_moved, h.sum(), h.std(), original.std(),
+                    sim.washed_off_at(step)),
             likelihood=likelihood_score, runs=runs_used,
-            speed=f'{config.RUN_SPEEDS[speed]:g} s per run (keys 1 2 3)'
+            speed=(f'{config.NONSTOP_SPEEDS[speed]} steps/s (keys 1 2 3)' if nonstop and run_goal is not None
+                   else f'{config.RUN_SPEEDS[speed]:g} s per run (keys 1 2 3)')
                   + (f'   |   {fps_line}' if show_fps else f'   |   {config.VERSION}'),
             showing_original=showing_original, sensor_lines=sensor_lines(),
             likelihood_progress=None if likelihood_job is None
             else (likelihood_job.done_runs, likelihood_job.total_runs))
+
 
 app.run()

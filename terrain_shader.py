@@ -3,9 +3,12 @@ terrain_shader.py - paints the terrain on the graphics card: grass, rock on stee
 snow above the snow line, with simple sunlight shading.
 
 Inputs set from Python (main.py):
-    grass_tex, rock_tex, snow_tex   the three textures
+    grass_tex, rock_tex, snow_tex, dirt_tex   the four textures (dirt: teammate's addition,
+                                    on low ground and moderate slopes)
     snow_line                       height (0 = lowest point, 1 = highest) where it's 0 C;
                                     worked out from the climate, so warming melts the snow
+    veg_tex, veg_on                 plant cover map (0 bare - 1 forest) from vegetation.py; with
+                                    veg_on = 0 plants simply cover everything that isn't steep
     height_ratio                    real height range / real map width (e.g. 1500 m / 10000 m),
                                     so rock goes on slopes that are really steep (~25-40 degrees),
                                     not ones that only look steep because the 3D view is stretched
@@ -26,6 +29,7 @@ in vec2 p3d_MultiTexCoord0;
 in vec3 p3d_Normal;
 
 out vec2 terrain_uv;
+out vec2 map_uv;
 out float elevation;
 out float steepness;
 out vec3 normal;
@@ -33,6 +37,7 @@ out vec3 normal;
 void main() {
     gl_Position = p3d_ModelViewProjectionMatrix * p3d_Vertex;
 
+    map_uv = p3d_MultiTexCoord0;               // 0-1 across the whole map (for the plant map)
     terrain_uv = p3d_MultiTexCoord0 * 8.0;
     elevation = p3d_Vertex.y;                 // 0 = lowest point, 1 = highest
 
@@ -47,9 +52,13 @@ void main() {
 uniform sampler2D grass_tex;
 uniform sampler2D rock_tex;
 uniform sampler2D snow_tex;
+uniform sampler2D dirt_tex;
+uniform sampler2D veg_tex;
+uniform float veg_on;
 uniform float snow_line;
 
 in vec2 terrain_uv;
+in vec2 map_uv;
 in float elevation;
 in float steepness;
 in vec3 normal;
@@ -60,17 +69,80 @@ void main() {
     vec4 grass = texture(grass_tex, terrain_uv);
     vec4 rock = texture(rock_tex, terrain_uv);
     vec4 snow = texture(snow_tex, terrain_uv);
+    vec4 dirt = texture(dirt_tex, terrain_uv);
 
-    float rock_amount = smoothstep(0.08, 0.25, steepness);
+    // teammate's ground: dirt on low ground and on moderate slopes, rock on steep ones
+    float lowland_dirt = 0.55 * (1.0 - smoothstep(0.2, 0.65, elevation));
+    float slope_dirt = smoothstep(0.04, 0.09, steepness)
+                     * (1.0 - smoothstep(0.15, 0.21, steepness));
+    float dirt_amount = max(lowland_dirt, slope_dirt);
+    float rock_amount = smoothstep(0.18, 0.3, steepness);
     // snow fades in just above the 0 C height; steep rock holds less snow
     float snow_amount = smoothstep(snow_line, snow_line + 0.06, elevation) * (1.0 - 0.6 * rock_amount);
 
-    vec4 ground = mix(grass, rock, rock_amount);
+    vec4 grassland = mix(grass, dirt, dirt_amount);
+    vec4 ground;
+    if (veg_on > 0.5) {
+        // plants (vegetation.py): bare dirt -> the teammate's grassland -> dark forest
+        float veg = texture(veg_tex, map_uv).r;
+        vec4 forest = vec4(grass.rgb * vec3(0.5, 0.68, 0.45), 1.0);
+        vec4 plants = mix(grassland, forest, smoothstep(0.6, 0.95, veg));
+        ground = mix(dirt, plants, smoothstep(0.05, 0.45, veg));
+    } else {
+        ground = grassland;                    // Vegetation off: exactly the teammate's look
+    }
+    ground = mix(ground, rock, rock_amount);
     vec4 colour = mix(ground, snow, snow_amount);
 
     // simple sunlight: slopes facing the sun are brighter
     vec3 sun = normalize(vec3(0.4, 1.0, -0.3));
     float light = 0.55 + 0.45 * max(dot(normalize(normal), sun), 0.0);
     fragColor = vec4(colour.rgb * light, 1.0);
+}
+""")
+
+
+# ---------------------------------------------------------------- water and ice
+# The water surface (water.py) uses this: rippling blue water below the 0 C height, ice above it.
+# freeze_line is the same 0-1 height as the snow line, so lakes high in the mountains freeze
+# first, and with Day / Season steps lakes freeze in winter and thaw in spring.
+water_shader = Shader(
+    name="water_ice",
+    language=Shader.GLSL,
+    vertex="""
+#version 140
+uniform mat4 p3d_ModelViewProjectionMatrix;
+in vec4 p3d_Vertex;
+in vec2 p3d_MultiTexCoord0;
+in vec3 p3d_Normal;
+out vec2 uv;
+out float elevation;
+out vec3 normal;
+
+void main() {
+    gl_Position = p3d_ModelViewProjectionMatrix * p3d_Vertex;
+    uv = p3d_MultiTexCoord0;
+    elevation = p3d_Vertex.y;                 // 0 = lowest point, 1 = highest
+    normal = normalize(p3d_Normal);
+}
+""",
+    fragment="""
+#version 140
+uniform sampler2D p3d_Texture0;               // the rippling water texture
+uniform float freeze_line;
+in vec2 uv;
+in float elevation;
+in vec3 normal;
+out vec4 fragColor;
+
+void main() {
+    vec4 water = texture(p3d_Texture0, uv * 6.0);
+    // ice: pale blue-white, with a faint pattern from the ripples so it isn't flat
+    vec3 ice = vec3(0.82, 0.90, 0.96) + 0.08 * (water.rgb - vec3(0.15, 0.5, 0.75));
+    float frozen = smoothstep(freeze_line, freeze_line + 0.02, elevation);
+    vec3 colour = mix(water.rgb, ice, frozen);
+    vec3 sun = normalize(vec3(0.4, 1.0, -0.3));
+    float light = 0.75 + 0.25 * max(dot(normalize(normal), sun), 0.0);
+    fragColor = vec4(colour * light, 1.0);
 }
 """)

@@ -28,12 +28,14 @@ import threading
 import numpy as np
 from scipy.ndimage import label
 
+import climate
 import config
 
 # Change these settings here, not in main.py.
 RIVER_MIN_AREA_KM2 = 0.5   # a river starts where this much land drains through a point
 LAKE_MIN_DEPTH = 0.3       # hollows shallower than this (height units) don't count as lakes
 LAKE_MIN_AREA_KM2 = 0.1    # smaller ponds aren't drawn (water still flows through them)
+REF_RUNOFF_MM = 300        # at this much runoff a river starts at RIVER_MIN_AREA_KM2; drier = fewer rivers
 RIVER_DEPTH = 0.5          # how high a small river is drawn above the ground (height units)
 HIDDEN_DEPTH = 1.0         # dry places: the water surface hides this far below the ground
 FLOW_SPEED = 0.03          # speed of animated ripples
@@ -101,11 +103,12 @@ def find_downhill(heights, diagonals=True):
     return np.where(lowest < h, receiver, -1).astype(np.int64)
 
 
-def flow_amount(heights, downhill):
-    """Count upstream rainfall reaching each cell along downhill paths."""
+def flow_amount(heights, downhill, weights=None):
+    """Count upstream rainfall reaching each cell along downhill paths.
+    weights: how much water each point adds (default 1 each, i.e. drainage area in points)."""
     h = np.asarray(heights, dtype=float)
     receivers = np.asarray(downhill).ravel()
-    flow = np.ones(h.size, dtype=float)
+    flow = np.ones(h.size, dtype=float) if weights is None else np.asarray(weights, dtype=float).ravel().copy()
     # Higher cells are processed first, so all upstream water arrives before
     # any lower cell passes its accumulated flow onward.
     for i in np.argsort(-h.ravel(), kind='stable'):
@@ -115,14 +118,24 @@ def flow_amount(heights, downhill):
     return flow.reshape(h.shape)
 
 
-def find_water(heights):
-    """Where the water is. Returns (filled, lakes, rivers, flow, min_flow).
+def find_water(heights, rain_mm=None, sea_temp=None, rain_map=None):
+    """Where the water is. Returns (surface, lakes, rivers, flow, min_flow, info).
 
-    filled   the terrain with hollows filled to their spill level
-    lakes    True where a hollow is deep enough to count as a lake
-    rivers   True where enough land drains through to make a river
+    surface  the terrain with lakes filled to their water level
+    lakes    True where there's a lake deep and big enough to draw
+    rivers   True where enough water drains through to make a river
     flow     how many points drain through each point
-    min_flow how many points of land a river needs (from RIVER_MIN_AREA_KM2)
+    min_flow how many points of land a river needs
+    info     {'closed': lakes that don't overflow, 'runoff': mm/yr, 'evaporation': mm/yr}
+
+    rain_map (optional): rain at every point (wind-driven rain); each point then adds its own
+    runoff to the rivers instead of the same amount everywhere.
+
+    Without rain_mm / sea_temp every hollow fills to the brim (a wet climate). With them,
+    each hollow keeps a WATER BALANCE: a lake grows until the water evaporating off its
+    surface equals the water flowing in. Inflow = runoff from its catchment + rain on the
+    lake; outflow = evaporation x lake area. If it can fill to the rim, it overflows and
+    feeds the rivers below; if not, it stays smaller and nothing flows out (like the Dead Sea).
     """
     h = np.asarray(heights, dtype=float)
     filled = fill_depressions(h)
@@ -130,20 +143,72 @@ def find_water(heights):
     flow = flow_amount(filled, downhill)
     cell_m = config.MAP_WIDTH_M / (h.shape[0] - 1)           # metres between points
     cell_km2 = (cell_m / 1000) ** 2
+    surface = filled.copy()
+    info = {'closed': 0, 'runoff': None, 'evaporation': None}
+    min_flow = max(2.0, RIVER_MIN_AREA_KM2 / cell_km2)
+
+    if rain_mm is not None and sea_temp is not None:
+        mean_temp = sea_temp - climate.LAPSE_RATE * climate.elevation_m(h.mean())
+        info['evaporation'] = climate.lake_evaporation_mm(mean_temp)
+        runoff = climate.runoff_mm(rain_mm, info['evaporation'])
+        info['runoff'] = runoff
+        if rain_map is not None:
+            # each point adds its own runoff (measured in "points of land at REF_RUNOFF_MM")
+            weights = climate.runoff_mm(rain_map, info['evaporation']) / REF_RUNOFF_MM
+            flow = flow_amount(filled, downhill, weights)
+        else:
+            weights = None
+            min_flow *= REF_RUNOFF_MM / max(runoff, 1e-6)    # drier climate: fewer rivers
+
+        # every hollow (filled above the ground), numbered; diagonal neighbours count as touching
+        hollow = (filled - h) > FLAT_SLOPE / 2
+        numbered, count = label(hollow, structure=np.ones((3, 3)))
+        flat_numbers = numbered.ravel()
+        order = np.argsort(flat_numbers, kind='stable')
+        starts = np.searchsorted(flat_numbers[order], np.arange(1, count + 2))
+        h_flat, flow_flat, filled_flat = h.ravel(), flow.ravel(), filled.ravel()
+        surface_flat = surface.ravel()
+        for k in range(count):
+            cells = order[starts[k]:starts[k + 1]]
+            spill_level = filled_flat[cells].max()
+            lake_temp = sea_temp - climate.LAPSE_RATE * climate.elevation_m(spill_level)
+            evaporation = climate.lake_evaporation_mm(lake_temp)
+            rain_here = rain_mm if rain_map is None else float(rain_map.ravel()[cells].mean())
+            if evaporation <= rain_here:
+                continue                                     # more rain than evaporation: fills up
+            if rain_map is None:
+                inflow = runoff * flow_flat[cells].max()     # mm x points per year draining in
+                runoff_here = runoff
+            else:
+                inflow = flow_flat[cells].max() * REF_RUNOFF_MM   # each point's own runoff, added up
+                runoff_here = climate.runoff_mm(rain_here, info['evaporation'])
+            # balance: inflow - runoff*A (lake area isn't land) + rain*A = evaporation*A  ->  A = ...
+            area_needed = inflow / (evaporation - rain_here + runoff_here)
+            if area_needed >= len(cells):
+                continue                                     # it fills to the rim and overflows
+            info['closed'] += 1
+            ground = np.sort(h_flat[cells])
+            n = int(area_needed)
+            level = ground[n - 1] + FLAT_SLOPE if n >= 1 else ground[0] - 1   # n = 0: dry basin
+            surface_flat[cells] = np.maximum(h_flat[cells], level)
+        if info['closed']:
+            # closed lakes keep their water: route the flow again on the new surface,
+            # so nothing flows out of them and the rivers below get less
+            downhill = find_downhill(surface)
+            flow = flow_amount(surface, downhill, weights)
 
     # lakes: deep enough, and big enough (each separate lake gets a number, then we count its points)
-    lakes = (filled - h) > LAKE_MIN_DEPTH
+    lakes = (surface - h) > LAKE_MIN_DEPTH
     numbered, count = label(lakes)
     sizes = np.bincount(numbered.ravel())
     big_enough = sizes * cell_km2 >= LAKE_MIN_AREA_KM2
     big_enough[0] = False                                     # number 0 = not a lake
     lakes = big_enough[numbered]
 
-    min_flow = max(2.0, RIVER_MIN_AREA_KM2 / cell_km2)
     rivers = (flow >= min_flow) & ~lakes
-    rivers, flow = connect_diagonals(rivers, flow, filled, downhill)
+    rivers, flow = connect_diagonals(rivers, flow, surface, downhill)
     rivers &= ~lakes
-    return filled, lakes, rivers, flow, min_flow
+    return surface, lakes, rivers, flow, min_flow, info
 
 
 def connect_diagonals(rivers, flow, filled, downhill):
@@ -174,16 +239,22 @@ def connect_diagonals(rivers, flow, filled, downhill):
     return rivers, flow
 
 
-def water_surface(heights):
-    """Height of the water surface at every point (below the ground where it's dry)."""
+def water_surface(heights, rain_mm=None, sea_temp=None, wind_strength=0.0, wind_toward=0.0):
+    """Height of the water surface at every point (below the ground where it's dry).
+    Returns (surface, lakes, rivers, info). Wind makes the rain uneven (rain.py)."""
+    import rain
     h = np.asarray(heights, dtype=float)
-    filled, lakes, rivers, flow, min_flow = find_water(h)
+    rain_map = None
+    if rain_mm is not None and wind_strength >= 0.05:
+        cell_m = config.MAP_WIDTH_M / (h.shape[0] - 1)
+        rain_map = rain.rain_map(h, cell_m, rain_mm, wind_strength, wind_toward)
+    filled, lakes, rivers, flow, min_flow, info = find_water(h, rain_mm, sea_temp, rain_map)
     surface = h - HIDDEN_DEPTH                                 # dry: hidden under the ground
     # bigger rivers are drawn deeper/wider: depth grows with log of the flow
     river_depth = RIVER_DEPTH * (1 + np.log2(np.maximum(flow / min_flow, 1)) / 3)
     surface = np.where(rivers, h + river_depth, surface)
-    surface = np.where(lakes, filled, surface)                # lakes are flat at the spill level
-    return surface, lakes, rivers
+    surface = np.where(lakes, filled, surface)                # lakes are flat at their water level
+    return surface, lakes, rivers, info
 
 
 def make_flow_texture(size=128):
@@ -214,51 +285,57 @@ def make_flow_texture(size=128):
 class RiverSystem:
     """The water surface, drawn as a second terrain mesh on top of the real one."""
 
-    def __init__(self, original_heights, scale):
+    def __init__(self, original_heights, scale, climate_now=(None, None)):
         from ursina import color
         from TerrainHandler import FastTerrain
 
-        surface, lakes, rivers = water_surface(original_heights)
+        surface, lakes, rivers, info = water_surface(original_heights, *climate_now)
+        from terrain_shader import water_shader
         self.entity = FastTerrain(surface, scale=scale, texture=make_flow_texture(),
-                                  texture_scale=(6, 6), color=color.white, double_sided=True)
+                                  color=color.white, double_sided=True, shader=water_shader)
+        self.entity.set_shader_input('freeze_line', 2.0)    # main.py moves it with the climate (ice)
         self.elapsed = 0.0
         self.job = None           # (thread, heights, key, result) while water is being worked out
         self.updates = 0          # how many times new water has been shown
         self.pending = None       # the newest request waiting for its turn
         self.depth = surface - np.asarray(original_heights, dtype=float)
-        self.cache = {'original': (surface, 100 * lakes.mean(), 100 * rivers.mean())}   # O key is instant
-        self.lake_percent = 100 * lakes.mean()
-        self.river_percent = 100 * rivers.mean()
+        entry = (surface, 100 * lakes.mean(), 100 * rivers.mean(), info)
+        self.cache = {('original', climate_now): entry}      # O key is instant
+        self.lake_percent, self.river_percent, self.info = entry[1], entry[2], info
         print(f'Water: lakes {self.lake_percent:.1f}% of map, rivers {self.river_percent:.1f}%')
 
     CACHE_SIZE = 300          # remember the water for this many terrains (each is tiny)
 
-    def request(self, heights, key=None):
+    def request(self, heights, key=None, climate_now=(None, None)):
         """Show the water for these heights, without making the app wait.
 
         Working out water takes 10-100 ms (more on big grids), so it's done in the
         background. Until it's ready, the previous water follows the new ground, then the
         new water appears. key names the terrain (e.g. 'original', or a step): water already
         worked out for the same key is reused straight away (O, Left/Right are instant).
+        climate_now = (rain mm/yr, sea-level yearly mean temperature, wind strength, wind direction):
+        evaporation, and where the wind drops its rain.
         """
         h = np.asarray(heights, dtype=float)
+        if key is not None:
+            key = (key, climate_now)          # the same terrain in another climate has other lakes
         if key is not None and key in self.cache:
             self.pending = None
             self._show(h, *self.cache[key])
             return
         self.follow(h)
-        self.pending = (h.copy(), key)        # only the newest request matters
+        self.pending = (h.copy(), key, climate_now)        # only the newest request matters
         self._start_next()
 
     def _start_next(self):
         if self.job is not None or self.pending is None:
             return
-        h, key = self.pending
+        h, key, climate_now = self.pending
         self.pending = None
         result = {}
 
         def work():
-            result['water'] = water_surface(h)
+            result['water'] = water_surface(h, *climate_now)
 
         thread = threading.Thread(target=work, daemon=True)
         thread.start()
@@ -271,8 +348,8 @@ class RiverSystem:
         thread, h, key, result = self.job
         self.job = None
         if 'water' in result:
-            surface, lakes, rivers = result['water']
-            entry = (surface, 100 * lakes.mean(), 100 * rivers.mean())
+            surface, lakes, rivers, info = result['water']
+            entry = (surface, 100 * lakes.mean(), 100 * rivers.mean(), info)
             if key is not None:
                 if len(self.cache) >= self.CACHE_SIZE:
                     self.cache.pop(next(iter(self.cache)))      # forget the oldest one
@@ -280,8 +357,9 @@ class RiverSystem:
             self._show(h, *entry)
         self._start_next()                    # a newer request came in meanwhile
 
-    def _show(self, heights, surface, lake_percent, river_percent):
+    def _show(self, heights, surface, lake_percent, river_percent, info):
         self.updates += 1                     # shown on screen, to see the water keeping up
+        self.info = info
         self.entity.set_heights(surface)
         self.depth = surface - heights        # remembered for follow()
         self.lake_percent = lake_percent

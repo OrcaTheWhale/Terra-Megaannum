@@ -20,6 +20,23 @@ YEAR = 365
 # temperature sensor (and the Up/Down keys). +2 means "2 C warmer than normal".
 warming_c = 0.0
 
+# Yearly rain (mm) right now: set by main.py from the menu, humidity sensor and [ ] keys.
+# None = use ANNUAL_RAIN_MM from config.py.
+rain_mm = None
+
+
+# Sunlight compared with normal (1 = normal): set by main.py from the light sensor.
+sunlight = 1.0
+
+# Wind: strength 0-1 and the direction it blows toward (degrees). Set by main.py from the
+# joystick, or from config.py / the J K Y keys when the sensor isn't connected.
+wind_strength = 0.0
+wind_toward = 0.0
+
+
+def current_rain_mm():
+    return config.ANNUAL_RAIN_MM if rain_mm is None else rain_mm
+
 
 def sea_level_temp(start_day, length_days):
     """Average sea-level temperature over a stretch of time.
@@ -67,6 +84,28 @@ def snow_line(sea_temp):
     freezing_m = sea_temp / LAPSE_RATE
     low, high = config.MIN_ELEVATION_M, config.MAX_ELEVATION_M
     return (freezing_m - low) / (high - low)
+
+
+def lake_evaporation_mm(temp_c):
+    """How much water evaporates from a lake surface in a year (mm), at a yearly mean temperature.
+    About 700 mm/yr at 8 C, rising ~7% for every degree warmer (Clausius-Clapeyron: warm air
+    holds ~7% more water vapour per degree). Gives ~400 mm at 0 C and ~2200 mm at 25 C."""
+    return 700 * 1.07 ** (temp_c - 8)
+
+
+def runoff_mm(rain_mm, evaporation_mm, w=2.6):
+    """How much of the yearly rain runs off the land into rivers and lakes (mm/yr).
+
+    The rest is evaporated or used by plants. Budyko curve (Fu's equation): with
+    aridity = evaporation / rain, the share that evaporates is
+        1 + aridity - (1 + aridity^w)^(1/w)
+    so in a wet place most rain runs off, in a desert almost none does.
+    """
+    rain = np.maximum(np.asarray(rain_mm, dtype=float), 1e-9)   # works for one number or a map
+    aridity = evaporation_mm / rain
+    evaporated_share = 1 + aridity - (1 + aridity ** w) ** (1 / w)
+    runoff = np.where(np.asarray(rain_mm) > 0, rain * (1 - evaporated_share), 0.0)
+    return float(runoff) if runoff.ndim == 0 else runoff
 
 
 def freezing_fraction(heights, sea_temp):

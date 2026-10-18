@@ -10,9 +10,13 @@ matplotlib.use('Agg')                 # save charts to files, no pop-up windows
 import matplotlib.pyplot as plt
 import numpy as np
 
+import config
 from config import (PARAMS, UNCERTAINTY, HEIGHT_ERROR, ENSEMBLE_RUNS,
                     ENSEMBLE_TIME_LIMIT, TOLERANCE, RELATIVE_TOLERANCE, MIN_CHANGE)
+
+REPLAY_CHUNKS = 40       # alternative runs replay the history in at most this many longer steps
 from conditions import run_conditions
+import rain
 
 
 def change_scores(h, original):
@@ -43,7 +47,7 @@ class LikelihoodJob:
     def __init__(self, sim):
         # a frozen copy of everything needed, so the simulation can keep going meanwhile
         self.original = sim.original.copy()
-        self.steps = list(sim.steps)
+        self.chunks = replay_chunks(sim.steps)
         self.target = sim.heights.copy()
         self.cell_m = sim.cell_m
         self.version = sim.version          # which state of the simulation this score is for
@@ -64,14 +68,15 @@ class LikelihoodJob:
         base = {name: value * (1 + rng.uniform(-UNCERTAINTY.get(name, 0), UNCERTAINTY.get(name, 0)))
                 for name, value in PARAMS.items()}
         h = self.original + rng.uniform(-HEIGHT_ERROR, HEIGHT_ERROR, self.original.shape)
-        for n, s in enumerate(self.steps):        # replay exactly the same steps
-            if n % 10 == 0:
-                time.sleep(0.0005)    # let the drawing thread have a turn, so the app stays smooth
+        state = {}                                # this run's own memory (river drainage)
+        for s in self.chunks:                     # replay the same history
+            time.sleep(0.001)         # let the drawing thread have a turn, so the app stays smooth
             p = dict(base)
-            p['dt_days'] = s['dt_days']
-            p['cell_m'] = self.cell_m
-            p['day'] = s['start_day'] % 365
-            p['sea_temp'] = s['sea_temp']
+            p.update(dt_days=s['dt_days'], cell_m=self.cell_m, day=s['start_day'] % 365,
+                     sea_temp=s['sea_temp'], rain_mm=s['rain_mm'], sunlight=s['sunlight'],
+                     mean_temp=s['mean_temp'], wind_strength=s['wind_strength'],
+                     wind_toward=s['wind_toward'], state=state)
+            p['rain_map'] = rain.map_for_step(h, p, state)
             h = run_conditions(h, p, s['enabled'])
         return h
 
@@ -103,6 +108,36 @@ class LikelihoodJob:
         print(f'likelihood: {score:.1f}% over {self.total_runs} runs '
               f'({time.perf_counter() - t0:.1f} s)')
         self.result = (score, spread, self.total_runs)
+
+
+def replay_chunks(steps):
+    """The history merged into at most REPLAY_CHUNKS longer steps, for fast replays.
+
+    Neighbouring steps with the same conditions ticked are joined: their lengths add up and
+    temperature and rain are averaged. Every condition handles long steps (creep with
+    sub-steps, rivers with the implicit method), so the result is nearly the same, much faster.
+    """
+    if not steps:
+        return []
+    size = max(1, -(-len(steps) // REPLAY_CHUNKS))      # steps per chunk, rounded up
+    chunks = []
+    for s in steps:
+        last = chunks[-1] if chunks else None
+        if last and last['enabled'] == s['enabled'] and last['count'] < size:
+            total = last['dt_days'] + s['dt_days']
+            for name in ('sea_temp', 'rain_mm', 'sunlight', 'mean_temp'):
+                last[name] = (last[name] * last['dt_days'] + s.get(name, last[name]) * s['dt_days']) / total
+            last['dt_days'] = total
+            last['count'] += 1
+        else:
+            chunks.append({'start_day': s['start_day'], 'dt_days': s['dt_days'], 'count': 1,
+                           'sea_temp': s['sea_temp'], 'enabled': s['enabled'],
+                           'rain_mm': s.get('rain_mm', config.ANNUAL_RAIN_MM),
+                           'sunlight': s.get('sunlight', 1.0),
+                           'mean_temp': s.get('mean_temp', config.AVG_TEMP_C),
+                           'wind_strength': s.get('wind_strength', 0.0),
+                           'wind_toward': s.get('wind_toward', 0.0)})
+    return chunks
 
 
 # ---------------------------------------------------------------- saving pictures

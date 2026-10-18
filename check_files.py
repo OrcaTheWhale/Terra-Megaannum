@@ -58,6 +58,54 @@ def test_conditions():
                 f'matches exact solution: {matches} ({got:.3f} vs {expected:.3f})')
 
 
+def test_uplift():
+    import config
+    import conditions
+    h = np.full((21, 21), 100.0)
+    out = conditions.tectonic_uplift(h, {'uplift_mm_yr': 1.0, 'dt_days': 365 * 1000})
+    # 1 mm/yr for 1000 yr = 1 m in the middle; the edges don't move
+    expected = 1.0 * 255 / (config.MAX_ELEVATION_M - config.MIN_ELEVATION_M)
+    middle_ok = abs((out[10, 10] - 100) - expected) < 1e-9
+    edges_ok = np.allclose(out[0], 100) and np.allclose(out[:, -1], 100)
+    return middle_ok and edges_ok, f'middle rises 1 m in 1000 yr at 1 mm/yr: {middle_ok}, edges stay: {edges_ok}'
+
+
+def test_rivers():
+    import erosion
+    # a tilted slope with a hollow in the middle: rivers should cut the slope, the hollow
+    # should catch sediment, and soil on the map + soil washed off must stay the same
+    x, z = np.meshgrid(np.linspace(0, 1, 40), np.linspace(0, 1, 40), indexing='ij')
+    h = 60 * x + 5 * np.sin(9 * z) - 40 * np.exp(-((x - 0.5) ** 2 + (z - 0.5) ** 2) * 60)
+    state = {}
+    start = h.copy()
+    for _ in range(50):                            # 50 steps of 10,000 years
+        h = erosion.river_erosion(h, {'river_k': 2e-6, 'deposition_g': 0.5, 'dt_days': 365e4,
+                                      'cell_m': 250, 'rain_mm': 800, 'sea_temp': 5, 'state': state})
+    conserved = np.isclose(h.sum() + state['washed_off'], start.sum())
+    stable = np.isfinite(h).all() and h.max() <= start.max() + 1e-9
+    cut = (start - h).max() > 1
+    filled = h[20, 20] > start[20, 20]
+    ok = conserved and stable and cut and filled
+    return ok, f'soil conserved: {conserved}, stable: {stable}, valleys cut: {cut}, hollow fills: {filled}'
+
+
+def test_vegetation():
+    import vegetation
+    h = np.tile(np.linspace(0, 255, 30)[:, None], (1, 30))      # low on one side, high on the other
+    cap = vegetation.capacity(h, 300, 5, 800)
+    treeline = cap[0].mean() > 0.9 and cap[-1].mean() < 0.05     # lush low down, bare up high
+    desert = vegetation.capacity(h, 300, 5, 100).max() == 0      # too dry for anything
+    # burn a patch, then let it regrow for 50 years in yearly steps
+    state = {'veg': vegetation.burn(cap, h.shape, 0.2, 0.5, strength=0.95)}
+    burned = state['veg'][6, 15]
+    for _ in range(50):
+        vegetation.vegetation(h, {'state': state, 'dt_days': 365, 'cell_m': 300, 'rain_mm': 800,
+                                  'mean_temp': 5, 'veg_growth': 0.15, 'veg_spread': 300})
+    regrew = state['veg'][6, 15] > 0.8 * cap[6, 15] > burned
+    ok = treeline and desert and regrew
+    return ok, f'treeline: {treeline}, desert bare: {desert}, burned patch regrows in 50 yr: {regrew}'
+
+
 def test_analysis():
     import analysis
     o = np.full((10, 10), 100.0)
@@ -105,10 +153,36 @@ def test_water():
     # a bowl: a hollow in the middle should fill up into one lake, with no water stuck anywhere
     x, z = np.meshgrid(np.linspace(-1, 1, 30), np.linspace(-1, 1, 30))
     bowl = 100 + 50 * (x ** 2 + z ** 2) - 60 * np.exp(-(x ** 2 + z ** 2) * 8)
-    filled, lakes, rivers, flow, min_flow = water.find_water(bowl)
+    filled, lakes, rivers, flow, min_flow, info = water.find_water(bowl)
     stuck = (water.find_downhill(filled).reshape(bowl.shape)[1:-1, 1:-1] == -1).sum()
-    ok = lakes[15, 15] and stuck == 0 and filled.min() >= bowl.min()
-    return ok, f'lake in the hollow: {bool(lakes[15, 15])}, water stuck inside the map: {stuck}'
+    # evaporation: in a wet, cool climate the lake fills; in a hot desert it shrinks
+    wet = water.find_water(bowl, rain_mm=2000, sea_temp=5)[1].sum()
+    dry = water.find_water(bowl, rain_mm=150, sea_temp=30)[1].sum()
+    ok = lakes[15, 15] and stuck == 0 and filled.min() >= bowl.min() and dry < wet
+    return ok, (f'lake in the hollow: {bool(lakes[15, 15])}, water stuck: {stuck}, '
+                f'lake size wet {wet} vs desert {dry} points')
+
+
+def test_rain():
+    import rain
+    # a ridge across the map, wind blowing straight at it: the side facing the wind gets more
+    # rain, the far side less (rain shadow), and the average stays what the menu says
+    x = np.linspace(0, 1, 64)
+    h = np.tile((200 * np.exp(-((x - 0.5) / 0.12) ** 2))[:, None], (1, 64))
+    r = rain.rain_map(h, 160, 800, 0.6, 0)                # wind blows toward +x
+    average_kept = abs(r.mean() - 800) < 1e-6
+    wet, dry = rain.describe(r, h, 160, 0)
+    calm = np.allclose(rain.rain_map(h, 160, 800, 0.0, 0), 800)
+    ok = average_kept and wet > 1.2 * dry and calm
+    return ok, f'average kept: {average_kept}, windward {wet:.0f} mm vs rain shadow {dry:.0f} mm, calm = even: {calm}'
+
+
+def test_weather_present():
+    source = open('weather.py', encoding='utf-8').read()
+    vfx = open('particle.py', encoding='utf-8').read()
+    ok = (all(name in vfx for name in ('def rain(', 'def snow(', 'def wind(')) and
+          'particle.rain(' in source and 'class Weather' in source and 'class Flame' in source)
+    return ok, "particle.py rain/snow/wind (VFX teammate) driven by weather.py, plus fire"
 
 
 def test_menu_present():
@@ -130,11 +204,16 @@ def test_main_present():
 check('config.py', test_config)
 check('climate.py', test_climate)
 check('conditions.py', test_conditions)
+check('uplift', test_uplift)
+check('rivers (erosion.py)', test_rivers)
+check('vegetation.py', test_vegetation)
 check('analysis.py', test_analysis)
 check('simulation.py', test_simulation)
 check('ui.py', test_ui)
 check('maps.py', test_maps)
 check('water.py', test_water)
+check('rain.py (wind)', test_rain)
+check('weather + particle', test_weather_present)
 check('menu.py', test_menu_present)
 check('TerrainHandler.py', test_terrain_handler)
 check('main.py', test_main_present)

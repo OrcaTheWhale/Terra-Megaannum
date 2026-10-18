@@ -8,7 +8,7 @@ from ursina import Text, Checkbox, Button, ButtonGroup, InputField, window
 
 import climate
 from config import (TIME_STEPS, DEFAULT_TIME_STEP, DEFAULT_STEPS, MAX_STEPS,
-                    ENSEMBLE_RUNS, RELATIVE_TOLERANCE)
+                    ENSEMBLE_RUNS, RELATIVE_TOLERANCE, CONDITIONS_ON)
 from conditions import CONDITIONS
 
 
@@ -22,7 +22,8 @@ class ControlPanel:
         self.checkboxes = {}
         for i, name in enumerate(CONDITIONS):
             row_y = y - 0.06 - i * 0.05
-            self.checkboxes[name] = Checkbox(start_value=True, position=(x + 0.015, row_y))
+            self.checkboxes[name] = Checkbox(start_value=name in CONDITIONS_ON,
+                                             position=(x + 0.015, row_y))
             Text(name, position=(x + 0.045, row_y + 0.012))
         y -= 0.07 + len(CONDITIONS) * 0.05
 
@@ -33,7 +34,7 @@ class ControlPanel:
         y -= 0.17
 
         # how many steps to run: click the box and type a number
-        Text('STEPS TO ADD (each Start)', position=(x, y + 0.025), scale=1.1)
+        Text('STEPS TO ADD (each Start, 0 = nonstop)', position=(x, y + 0.025), scale=1.1)
         self.steps_field = InputField(default_value=str(DEFAULT_STEPS), max_lines=1,
                                       character_limit=len(str(MAX_STEPS)),
                                       limit_content_to='0123456789',
@@ -69,13 +70,21 @@ class ControlPanel:
         typed = self.steps_field.text.strip()
         return max(1, min(MAX_STEPS, int(typed) if typed else 1))
 
+    @property
+    def nonstop(self):
+        """0 typed in the box: Start runs until it's paused (continuous mode)."""
+        return self.steps_field.text.strip() == '0'
+
     def typing(self):
         """True while the steps box is being typed in (so keys like R don't reset)."""
         return self.steps_field.active
 
     def refresh(self):
         """Update the 'how long' text next to the box."""
-        self.total_text.text = '= ' + span_text(self.steps * self.step_days) + ' more'
+        if self.nonstop:
+            self.total_text.text = '= nonstop, until you pause'
+        else:
+            self.total_text.text = '= ' + span_text(self.steps * self.step_days) + ' more'
         if self.typing():
             self.total_text.text += '\n(press Enter when done)'
 
@@ -104,7 +113,7 @@ def date_text(days):
 def hud_text(status, step, latest_step, target, unit, days, sea_temp, below_zero,
              enabled, scores, likelihood, runs, speed, showing_original, sensor_lines,
              likelihood_progress=None):
-    land_changed, soil_moved, total_soil, roughness, original_roughness = scores
+    land_changed, soil_moved, total_soil, roughness, original_roughness, washed_off = scores
     looking_back = f'   (latest: {latest_step})' if step != latest_step else ''
     if likelihood_progress is not None:
         done, total = likelihood_progress
@@ -124,11 +133,12 @@ def hud_text(status, step, latest_step, target, unit, days, sea_temp, below_zero
         f"{date_text(days)}   Sea level {sea_temp:.1f} C   Below freezing: {below_zero:.0f}% of map\n"
         f"Active: {', '.join(enabled) if enabled else 'none'}\n"
         f"Space start/pause | R reset | Left/Right look back | L likelihood | O G M C U views | 1 2 3 speed | F fps\n"
-        f"Up/Down warmer/colder | Z re-zero temperature sensor\n"
+        f"Up/Down warmer/colder | [ ] rain | Y wind | J K turn wind | X auto-orbit | H hide text | Z re-zero | V weather | B fire\n"
         f"{sensor_lines}\n"
         f"{likely}\n"
         f"Land changed:  {land_changed:.1f}%\n"
         f"Soil moved:    {soil_moved:.2f}%\n"
-        f"Total soil:    {total_soil:,.0f}  (should never change)\n"
+        f"Total soil:    {total_soil:,.0f} on the map + {washed_off:,.0f} washed off by rivers"
+        f" = {total_soil + washed_off:,.0f}  (only uplift changes this)\n"
         f"Roughness:     {roughness:.2f}   (was {original_roughness:.2f})"
     )

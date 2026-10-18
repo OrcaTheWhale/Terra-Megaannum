@@ -3,4 +3,5 @@ numpy
 matplotlib
 pyserial
 scipy
-noise
+# noise    <- optional: for noise_map.py. Without it, generated maps use the basic backup.
+#             On Windows it needs Microsoft C++ Build Tools: python -m pip install noise

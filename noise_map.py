@@ -4,6 +4,9 @@ noise_map.py - generates a heightmap from simplex noise (teammate's generator).
 The maths is unchanged from the original script; it's now a function so the menu can
 call it with a seed, size and frequency, and it gives back the heights directly.
 Run this file on its own to save a heightmap PNG like before:  python noise_map.py
+
+Needs the `noise` package:  python -m pip install noise
+(On Windows this needs Microsoft C++ Build Tools to install.)
 """
 
 import numpy as np
@@ -11,12 +14,13 @@ from noise import snoise2
 from PIL import Image
 
 
-def create_heightmap(seed, width=1000, height=1000, frequency=1.5):
+def create_heightmap(seed, width=1000, height=1000, frequency=1.5, octaves=2):
     """A grid of heights from 0 to 255.
 
     seed       which map you get (same seed = same map)
     frequency  higher values make more steeper and taller hills, while lower values
                make less smoother hills
+    octaves    number of noise layers to combine; more layers add finer detail
 
     The noise is smooth and continuous, so a small grid (e.g. 64 x 64) shows the same
     landscape as a big one, just with less detail - and is much faster to make.
@@ -26,7 +30,7 @@ def create_heightmap(seed, width=1000, height=1000, frequency=1.5):
         for x in range(width):
             nx = (x / width - 0.5) * frequency
             ny = (y / height - 0.5) * frequency
-            n = snoise2(nx, ny, octaves=4, persistence=0.5, lacunarity=2, base=seed)  # -1 to 1
+            n = snoise2(nx, ny, octaves=octaves, persistence=0.5, lacunarity=2, base=seed)
             value[y, x] = np.clip((n + 1) * 127.5, 0, 255)                          # 0 to 255
     return value
 
