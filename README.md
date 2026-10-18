@@ -3,6 +3,14 @@
 Achievements/Stuff we did:
 
 - Replaced Ursina’s mesh builder with NumPy calculations that rebuild terrain around 40 times faster by processing the whole grid together and reusing triangle connections and texture coordinates.
+- Height being rounded since PNG's are 8 bit (0-255), so height is converted to decimals at start and never touched by simulation changes.
+- Long time steps spiked terrain, so a long step is split into multiple sub-steps to stay stable.
+- Likelihood slowed down the simulation since it runs it multiple times, so instead we made it run as a background thread.
+- Water getting stuck in small dips. Fixed by filling up each hollow to its max first, allowing water to flow to the edges of the map
+- Always 100% likelihood scores. Fixed by scoring land that was affected by -+2 units.
+- Jagged pools of water. Fixed by lowering points beside a diagonal step with water.
+- Deserts were able to have lakes since it had hollows. Fixed after adding evaporation
+- Rain was a constant for everywhere on the map. Changed by merging rain and wind conditions. Basically, wind moves rain, so some spots are more "rained on" and some are less.
 
   For libraries: python -m pip install -r requirements.txt
 
