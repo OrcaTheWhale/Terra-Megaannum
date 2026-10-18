@@ -7,8 +7,11 @@ This simulator takes math calculations and numbers to model and render a 3D terr
 
 Members:
 Edward Zhang - Simulations; hardware
+
 Diego Conda: Height and texture map to 3d Render; ui; resolutions
+
 Eric Xu: Visual Effects; Functions; 
+
 Idan Landa: Water
 
 Features:
