@@ -130,7 +130,7 @@ def snow(intensity = 0.0, center = (0, 0), size = (255, 255), life = 15, height 
     
     return SnowManager()
 
-def wind(intensity = 0.0, speed = 5, size = (255, 20), angle = 0):
+def wind(intensity = 0.0, speed = 5, size = (255, 20), rad = 255, angle = 0):
     class WindParticle(Entity):
         # gives the look of wind 
         def __init__(self, position=(0,0,0), rotation=(0,0,0)):
@@ -152,7 +152,7 @@ def wind(intensity = 0.0, speed = 5, size = (255, 20), angle = 0):
                 -random.uniform(speed, speed*1.5)*math.sin(math.radians(-self.rotation.y)) + math.sin(time.dt*0.01)
             )
             
-            self.maxLife = 255 * 2 * math.sqrt(2) / speed # 255 is map size
+            self.maxLife = rad * 2 * math.sqrt(2) / speed
             self.lifetime = self.maxLife  # seconds
             
         def update(self):
@@ -173,7 +173,7 @@ def wind(intensity = 0.0, speed = 5, size = (255, 20), angle = 0):
             super().__init__()
             self.num = 0
             self.timer = 0.1
-            self.life = 255 * 2 * math.sqrt(2) / speed
+            self.life = rad * 2 * math.sqrt(2) / speed
             self.spawnNum = int(size[0] * size[1] * intensity / 200)
             self.spawnMax = int(self.spawnNum * self.life / self.timer) 
 
@@ -191,9 +191,9 @@ def wind(intensity = 0.0, speed = 5, size = (255, 20), angle = 0):
                         """
                         WindParticle(
                             position=(
-                                255*math.sqrt(2)*math.cos(math.radians(angle)) + random.uniform(-size[0], size[0])*math.cos(math.radians(angle + 90)), 
+                                rad*math.sqrt(2)*math.cos(math.radians(angle)) + random.uniform(-size[0], size[0])*math.cos(math.radians(angle + 90)), 
                                 random.uniform(-size[1], size[1]),
-                                255*math.sqrt(2)*math.sin(math.radians(angle)) + random.uniform(-size[0], size[0])*math.sin(math.radians(angle + 90))
+                                rad*math.sqrt(2)*math.sin(math.radians(angle)) + random.uniform(-size[0], size[0])*math.sin(math.radians(angle + 90))
                             ), 
                             rotation=(0, -angle, 0),
                         )
