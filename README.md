@@ -6,14 +6,23 @@ Using Ursina's library/game engine, we are able to create a terrain simulator th
 This simulator takes math calculations and numbers to model and render a 3D terrain and its changes over many different conditions.
 
 Features:
+
 Simulates terrain by rendering a height and textured map with the area's lengths and heights, and then running multiple calculations for each condition (erosion, river erosion, tectonic plates).
+
 Environment conditions: Erosion, River erosion, evaporation, tectonic plates, fire, vegetation, snow
+
 Hardware connection, so you can affect the system by playing with hardware in real life.
+
 Likelihood and analysis to show predictions and the estimated correctedness.
+
 Plotting different graphs and plots to see changes made by the environment conditions.
+
 Noise map generator
+
 Weather, climate temperatures, freezing waters
+
 The worst UI known to man
+
 Preview to see original version
 
 Likelihood/Uncertainty map:
