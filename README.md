@@ -28,7 +28,7 @@ Fixes we did:
 - Deserts were able to have lakes since it had hollows. Fixed after adding evaporation
 - Rain was a constant for everywhere on the map. Changed by merging rain and wind conditions. Basically, wind moves rain, so some spots are more "rained on" and some are less.
 
-  For libraries: python -m pip install -r requirements.txt
+
 
 How the Simulator’s Calculations Work:
 
@@ -378,4 +378,6 @@ L_{\mathrm{river}}=cA^{b},\qquad
 U=K_{\mathrm{eff}}\sqrt Q\,S,\qquad
 S=\frac{U}{K_{\mathrm{eff}}\sqrt Q}
 ```
+
+  For libraries: python -m pip install -r requirements.txt
 
