@@ -1,4 +1,4 @@
-# MathHacks2.0-TempName-
+# MathHacks2.0-Terra Megaannum-
 
 Features:
 Simulates terrain by rendering a height and textured map with the area's lengths and heights, and then running multiple calculations for each condition (erosion, river erosion, tectonic plates).
