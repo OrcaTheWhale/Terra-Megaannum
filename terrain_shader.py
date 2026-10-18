@@ -39,7 +39,6 @@ void main() {
 #version 140
 uniform sampler2D grass_tex;
 uniform sampler2D rock_tex;
-uniform sampler2D dirt_tex;
 uniform sampler2D snow_tex;
 uniform sampler2D dirt_tex;
 uniform sampler2D veg_tex;
@@ -60,10 +59,7 @@ void main() {
     vec4 snow = texture(snow_tex, terrain_uv);
     vec4 dirt = texture(dirt_tex, terrain_uv);
 
-<<<<<<< HEAD
     // teammate's ground: dirt on low ground and on moderate slopes, rock on steep ones
-=======
->>>>>>> 6f462d55238ad6b8f075802de15a3d4c03da83a4
     float lowland_dirt = 0.55 * (1.0 - smoothstep(0.2, 0.65, elevation));
     float slope_dirt = smoothstep(0.04, 0.09, steepness)
                      * (1.0 - smoothstep(0.15, 0.21, steepness));
@@ -72,7 +68,6 @@ void main() {
     // snow fades in just above the 0 C height; steep rock holds less snow
     float snow_amount = smoothstep(snow_line, snow_line + 0.06, elevation) * (1.0 - 0.6 * rock_amount);
 
-<<<<<<< HEAD
     vec4 grassland = mix(grass, dirt, dirt_amount);
     vec4 ground;
     if (veg_on > 0.5) {
@@ -84,9 +79,6 @@ void main() {
     } else {
         ground = grassland;                    // Vegetation off: exactly the teammate's look
     }
-=======
-    vec4 ground = mix(grass, dirt, dirt_amount);
->>>>>>> 6f462d55238ad6b8f075802de15a3d4c03da83a4
     ground = mix(ground, rock, rock_amount);
     vec4 colour = mix(ground, snow, snow_amount);
 

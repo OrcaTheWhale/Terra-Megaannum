@@ -59,15 +59,7 @@ def stand_in_noise(seed, size=64, octaves=5):
 
 
 def generate_heights(seed, res = 128, frequency=1.5, octaves=2):
-<<<<<<< HEAD
     """A generated map, the same size as a loaded one (config.GRID_SIZE points across)."""
-=======
-    """A generated map, the same size as a loaded one (config.GRID_SIZE points across).
-
-    The result is stretched so the lowest point is 0 and the highest is 255: then the
-    "lowest point" and "highest point" typed in the menu really are the lowest and highest.
-    """
->>>>>>> 6f462d55238ad6b8f075802de15a3d4c03da83a4
     size = res
     if create_heightmap is not None:
         h = create_heightmap(seed, width=size, height=size, frequency=frequency,
