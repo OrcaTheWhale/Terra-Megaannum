@@ -3,7 +3,7 @@ from ursina import *
 import random
 import math
 
-def rain(intensity = 0.0, center = (0, 0), size = (255, 255), life = 5, height = 5, windspeed = 5, windangle = 0):
+def rain(intensity = 0.0, center = (0, 0), size = (255, 255), life = 5, height = 5, windspeed = 0, windangle = 0):
     class RainParticle(Entity):
         def __init__(self, position=(0,0,0), lifetime = 5.0):
             # gives the look of rain
@@ -64,7 +64,7 @@ def rain(intensity = 0.0, center = (0, 0), size = (255, 255), life = 5, height =
 
     return RainManager()
 
-def snow(intensity = 0.0, center = (0, 0), size = (255, 255), life = 15, height = 15, windspeed = 5, windangle = 0):
+def snow(intensity = 0.0, center = (0, 0), size = (255, 255), life = 15, height = 15, windspeed = 0, windangle = 0):
 
     class SnowParticle(Entity):
         def __init__(self, position=(0,0,0), lifetime = 5.0):
