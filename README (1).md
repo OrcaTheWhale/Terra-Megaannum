@@ -192,5 +192,3 @@ A separate steady-state check compares river erosion with tectonic uplift. Over 
 The planning document reports an erosion-to-uplift ratio of 0.97 after forty million simulated years, where one represents exact balance.
 
 
-Created using textures from ambientCG.com,
-licensed under the Creative Commons CC0 1.0 Universal License.
