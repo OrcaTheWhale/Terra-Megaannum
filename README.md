@@ -13,7 +13,14 @@ Weather, climate temperatures, freezing waters
 The worst UI known to man
 Preview to see original version
 
+Likelihood/Uncertainty map:
+<img width="459" height="344" alt="image" src="https://github.com/user-attachments/assets/56b38bfe-ce49-498e-8829-a0b00115021f" />
 
+History map:
+<img width="525" height="346" alt="image" src="https://github.com/user-attachments/assets/5a557139-979b-470c-9391-4cd0489d354e" />
+
+Changed Map:
+<img width="419" height="342" alt="image" src="https://github.com/user-attachments/assets/7c41c87d-30a5-46ab-bf75-aed6c57f6d85" />
 
 
 Fixes we did:
