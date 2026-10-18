@@ -2,6 +2,8 @@
 ### A simulated environment with realistic conditions, over long periods of time to educate about erosion.  
 ![Example](https://cdn.discordapp.com/attachments/1189379972930998302/1561433467340718220/ScreenRecording2026-10-18131001-ezgif.com-optimize.gif?ex=6ad655bc&is=6ad5043c&hm=016837b97f7148693b4e32617eb41a106e0913efd938338dc00217f963578ce9&)
 
+Using Ursine's library/game engine, we are able to create a terrain simulator that ranges over a long period of time.
+
 Features:
 Simulates terrain by rendering a height and textured map with the area's lengths and heights, and then running multiple calculations for each condition (erosion, river erosion, tectonic plates).
 Environment conditions: Erosion, River erosion, evaporation, tectonic plates, fire, vegetation, snow
