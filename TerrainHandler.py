@@ -1,12 +1,14 @@
 import numpy as np
 from ursina import Entity, Mesh
-slope_degrees : float
 #script to abandon ursina's built in builder; it checks in a for loop, this checks in NumPy to increase speed and calculations
 
 class FastTerrain(Entity):
     def __init__(self, heights, **kwargs):
-        w, d = heights.shape               
+        w, d = heights.shape
         self.w, self.d = w, d
+        # how tall the terrain is drawn compared to how wide (for slope_degrees), from the scale given
+        scale = kwargs.get('scale', (1, 1, 1))
+        self.height_ratio = scale[1] / scale[0]
 
         #create the flat grid from -0.5 to 0.5
         X, Z = np.meshgrid(np.linspace(-0.5, 0.5, w), np.linspace(-0.5, 0.5, d))
@@ -38,7 +40,9 @@ class FastTerrain(Entity):
         #each point has a "normal", in which the direction it faces. Measure the slope everywhere to find where it points to the sun:
         #gradient returns the slope by getting the x and z axis, which takes the next value, and takes n2-n1 / 2 for the slope.
         gz, gx = np.gradient(h, 1 / (self.d - 1), 1 / (self.w - 1))
-        self.slope_degrees = np.degrees(np.arctan(np.sqrt((gx * 10 / 35) ** 2 + (gz * 10 / 35) ** 2))) # convert the slope to degrees, and scale it to the terrain's scale, so that the slope is accurate to the terrain's scale. The 10/35 is the y/x ratio of the terrain's scale.
+        # slope of the terrain as drawn on screen, in degrees (scaled by how tall vs wide it's drawn).
+        # Not used yet; the shader works out steepness itself from the normals.
+        self.slope_degrees = np.degrees(np.arctan(np.hypot(gx, gz) * self.height_ratio))
         n = self._normals
         #turn the slope into arrows
         #rising x (+), and leaning toward -x
@@ -52,5 +56,3 @@ class FastTerrain(Entity):
         self.model.vertices = self._verts.ravel()
         self.model.normals = self._normals.ravel()
         self.model.generate()
-
-         

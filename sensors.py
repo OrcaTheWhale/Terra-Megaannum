@@ -157,11 +157,3 @@ if __name__ == '__main__':
               f"hum {reader.get('hum'):4.0f}% (rain {reader.norm('hum'):.2f})  "
               f"light {reader.norm('light'):.2f}  flame {reader.norm('flame'):.2f}  "
               f"wind {strength:.2f} toward {direction if direction is not None else '-'}")
-
-
-
-#average temp: 25.3C
-#average hum: 14-15%, percentage after breath: 25%
-#light: 0.0-0.1, tune for 0.50-1
-#flame normal: 0.90
-#gy-521: 0-360

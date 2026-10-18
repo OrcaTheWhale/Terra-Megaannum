@@ -10,6 +10,7 @@ import numpy as np
 
 import analysis
 import climate
+import config
 from config import PARAMS
 from conditions import run_conditions
 
@@ -17,7 +18,10 @@ from conditions import run_conditions
 class Simulation:
     def __init__(self, original):
         self.original = original
+        self.cell_m = config.MAP_WIDTH_M / (original.shape[0] - 1)   # metres between neighbouring points
         self.version = 0           # goes up every time the terrain changes
+        self.timeline = 0          # goes up only when history is thrown away (reset / rewind),
+                                   # so (timeline, step) always means the same terrain
         self.reset()
 
     def reset(self):
@@ -28,6 +32,7 @@ class Simulation:
         self.snapshots = [self.original.astype(np.float32)]  # terrain after each step (index 0 = start)
         self.history = []                                    # numbers per step, for charts
         self.version += 1
+        self.timeline += 1
 
     @property
     def step(self):
@@ -39,6 +44,7 @@ class Simulation:
         start = self.elapsed_days
         p = dict(PARAMS)
         p['dt_days'] = dt_days
+        p['cell_m'] = self.cell_m
         p['day'] = start % climate.YEAR
         p['sea_temp'] = climate.sea_level_temp(start, dt_days)
 
@@ -63,6 +69,7 @@ class Simulation:
         self.history = self.history[:step]
         self.elapsed_days = sum(s['dt_days'] for s in self.steps)
         self.version += 1
+        self.timeline += 1
 
     def heights_at(self, step):
         return self.snapshots[step].astype(float)

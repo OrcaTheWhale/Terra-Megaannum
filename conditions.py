@@ -4,8 +4,9 @@ conditions.py - the physics. Each condition changes the land during one step.
 Every condition is a function  condition(h, p) -> new h
     h  the heights (NumPy array, 0-255 scale)
     p  a dictionary with:
-         everything in PARAMS (config.py), e.g. p['creep_rate']
-         p['dt_days']    how many days this step covers (1, ~91 or 365)
+         everything in PARAMS (config.py), e.g. p['creep_d']
+         p['dt_days']    how many days this step covers (1 day up to 10,000 years)
+         p['cell_m']     real distance between neighbouring points, in metres
          p['day']        day of the year this step starts on
          p['sea_temp']   average sea-level temperature during this step (C)
 
@@ -26,11 +27,16 @@ MAX_RATE_PER_SUBSTEP = 0.5    # soil creep goes unstable above 1; 0.5 keeps a sa
 def soil_creep(h, p):
     """Soil slides from high spots toward the average of its 4 neighbours.
 
-    Rates are per day, so a long step (a season or a year) would be a huge jump.
-    Doing that in one go makes the maths unstable (the terrain explodes into spikes),
+    This is the diffusion equation  dh/dt = D * laplacian(h), with D in m^2/year.
+    On our grid it becomes: each point moves toward its neighbours' average by
+        rate = 4 * D * (time in years) / (distance between points)^2
+    Real D is tiny, so visible change takes hundreds of thousands of years.
+
+    A big step in one go makes the maths unstable (the terrain explodes into spikes),
     so a long step is split into enough small sub-steps to stay stable.
     """
-    total = p['creep_rate'] * p['dt_days']
+    years = p['dt_days'] / 365
+    total = 4 * p['creep_d'] * years / p['cell_m'] ** 2
     substeps = max(1, math.ceil(total / MAX_RATE_PER_SUBSTEP))
     rate = total / substeps
     for _ in range(substeps):

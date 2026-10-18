@@ -43,6 +43,7 @@ class LikelihoodJob:
         self.original = sim.original.copy()
         self.steps = list(sim.steps)
         self.target = sim.heights.copy()
+        self.cell_m = sim.cell_m
         self.version = sim.version          # which state of the simulation this score is for
         self.done_runs = 0
         self.total_runs = ENSEMBLE_RUNS
@@ -61,9 +62,12 @@ class LikelihoodJob:
         base = {name: value * (1 + rng.uniform(-UNCERTAINTY.get(name, 0), UNCERTAINTY.get(name, 0)))
                 for name, value in PARAMS.items()}
         h = self.original + rng.uniform(-HEIGHT_ERROR, HEIGHT_ERROR, self.original.shape)
-        for s in self.steps:                      # replay exactly the same steps
+        for n, s in enumerate(self.steps):        # replay exactly the same steps
+            if n % 10 == 0:
+                time.sleep(0.0005)    # let the drawing thread have a turn, so the app stays smooth
             p = dict(base)
             p['dt_days'] = s['dt_days']
+            p['cell_m'] = self.cell_m
             p['day'] = s['start_day'] % 365
             p['sea_temp'] = s['sea_temp']
             h = run_conditions(h, p, s['enabled'])
@@ -109,15 +113,15 @@ def save_history_chart(history):
     if not history:
         print('nothing simulated yet')
         return
-    days = [row['days'] for row in history]
+    years = [row['days'] / 365 for row in history]
     fig, ax = plt.subplots()
-    ax.plot(days, [row['land_changed'] for row in history], label='% of land changed')
-    ax.plot(days, [row['soil_moved'] for row in history], label='% of soil moved')
-    ax.set_xlabel('days simulated')
+    ax.plot(years, [row['land_changed'] for row in history], label='% of land changed')
+    ax.plot(years, [row['soil_moved'] for row in history], label='% of soil moved')
+    ax.set_xlabel('years simulated')
     ax.set_ylabel('%')
     ax.legend(loc='upper left')
     temps = ax.twinx()                     # temperature on a second axis, to see the seasons
-    temps.plot(days, [row['sea_temp'] for row in history], color='gray', alpha=0.5)
+    temps.plot(years, [row['sea_temp'] for row in history], color='gray', alpha=0.5)
     temps.set_ylabel('sea-level temperature (C)', color='gray')
     plt.title('Change over time')
     plt.savefig('history.png')
