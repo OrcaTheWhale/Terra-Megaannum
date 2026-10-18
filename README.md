@@ -355,5 +355,3 @@ U=K_{\mathrm{eff}}\sqrt Q\,S,\qquad
 S=\frac{U}{K_{\mathrm{eff}}\sqrt Q}
 ```
 
-Created using textures from ambientCG.com,
-licensed under the Creative Commons CC0 1.0 Universal License.
