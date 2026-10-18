@@ -15,9 +15,9 @@ MAPS = {
 #   'texture' the map's own texture PNG from MAPS (generated maps still use 'blend')
 TERRAIN_LOOK = 'blend'
 TERRAIN_TEXTURES = {
-    'grass_tex': "textures/Grass002_2K-PNG/Grass002_2K-PNG_Color.png",
-    'rock_tex': "textures/Rock050_2K-PNG/Rock050_2K-PNG_Color.png",
-    'snow_tex': "textures/Snow010A_2K-PNG/Snow010A_2K-PNG_Color.png",
+    'grass_tex': "assets/textures/Grass002_1K-JPG_Color.jpg",
+    'rock_tex': "assets/textures/Rock050_1K-JPG_Color.jpg",
+    'snow_tex': "assets/textures/Snow010A_1K-JPG_Color.jpg",
 }
 GENERATED_COLOR = (0.45, 0.62, 0.38)   # used only if the blend textures can't be found, 0-1 RGB
 
