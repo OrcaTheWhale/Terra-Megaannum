@@ -14,7 +14,8 @@ Eric Xu: Visual Effects; Functions;
 
 Idan Landa: Water
 
-Features:
+
+**Features:**
 
 Simulates terrain by rendering a height and textured map with the area's lengths and heights, and then running multiple calculations for each condition (erosion, river erosion, tectonic plates).
 
@@ -44,7 +45,7 @@ Changed Map:
 <img width="419" height="342" alt="image" src="https://github.com/user-attachments/assets/7c41c87d-30a5-46ab-bf75-aed6c57f6d85" />
 
 
-Fixes we did:
+**Fixes we did:**
 
 - Replaced Ursina’s mesh builder with NumPy calculations that rebuild terrain around 40 times faster by processing the whole grid together and reusing triangle connections and texture coordinates.
 - Height being rounded since PNG's are 8 bit (0-255), so height is converted to decimals at start and never touched by simulation changes.
