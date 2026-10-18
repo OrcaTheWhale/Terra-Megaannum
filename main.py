@@ -24,6 +24,7 @@ from menu import MainMenu
 from sensors import SensorReader
 from simulation import Simulation
 from TerrainHandler import FastTerrain
+from procedural_noise import create_heightmap
 from terrain_shader import terrain_shader
 from ui import ControlPanel, hud_text
 from water import RiverSystem
@@ -412,6 +413,5 @@ def update():
             showing_original=showing_original, sensor_lines=sensor_lines(),
             likelihood_progress=None if likelihood_job is None
             else (likelihood_job.done_runs, likelihood_job.total_runs))
-
 
 app.run()
