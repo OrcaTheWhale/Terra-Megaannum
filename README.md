@@ -5,6 +5,12 @@
 Using Ursina's library/game engine, we are able to create a terrain simulator that ranges over a long period of time.
 This simulator takes math calculations and numbers to model and render a 3D terrain and its changes over many different conditions.
 
+Members:
+Edward Zhang - Simulations; hardware
+Diego Conda: Height and texture map to 3d Render; ui; resolutions
+Eric Xu: Visual Effects; Functions; 
+Idan Landa: Water
+
 Features:
 
 Simulates terrain by rendering a height and textured map with the area's lengths and heights, and then running multiple calculations for each condition (erosion, river erosion, tectonic plates).
