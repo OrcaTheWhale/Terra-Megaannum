@@ -1,6 +1,6 @@
 # MathHacks2.0-Terra Megaannum-
 ### A simulated environment with realistic conditions, over long periods of time to educate about erosion.  
-![Example](https://cdn.discordapp.com/attachments/1189379972930998302/1561433467340718220/ScreenRecording2026-10-18131001-ezgif.com-optimize.gif?ex=6ad655bc&is=6ad5043c&hm=016837b97f7148693b4e32617eb41a106e0913efd938338dc00217f963578ce9&)
+![Example](https://i.imgur.com/kIe2D4B.gif)
 
 Using Ursina's library/game engine, we are able to create a terrain simulator that ranges over a long period of time.
 This simulator takes math calculations and numbers to model and render a 3D terrain and its changes over many different conditions.
