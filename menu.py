@@ -27,7 +27,7 @@ class MainMenu(Entity):
 
         # dark background behind the menu
         Entity(parent=self, model='quad', color=color.black66, scale=(1.75, 0.95), z=1)
-        Text('WORLD IN A BOX', parent=self, position=(0, 0.42), origin=(0, 0), scale=2.5)
+        Text('Terra Megaannum', parent=self, position=(0, 0.42), origin=(0, 0), scale=2.5)
 
         # ---- 1. choose a map (left)
         x = -0.8

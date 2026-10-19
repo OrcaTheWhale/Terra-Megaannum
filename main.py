@@ -23,8 +23,8 @@ import rain
 import numpy as np
 from PIL import Image
 
-app = Ursina(title=f'Math Hacks 2.0 - World in a Box {config.VERSION}', development_mode=False)
-print('World in a Box', config.VERSION)
+app = Ursina(title=f'Math Hacks 2.0 - Terra Megaannum {config.VERSION}', development_mode=False, icon="assets/Terra-Megaannum.ico")
+print('Terra Megaannum', config.VERSION)
 Sky()
 print("graphics:", base.win.gsg.driver_renderer)
 
