@@ -88,7 +88,6 @@ def rain(intensity = 0.0, center = (0, 0), size = (255, 255), life = 5, height =
                 scale=(0.05, 0.5, 0.05), # scale is stretched out on the y axis to imitate slits of rain
                 position=self.initPos,
                 double_sided=True,
-                billboard=True  # Keeps particles facing the camera
             )
             self.jitter = (random.uniform(-0.05, 0.05), random.uniform(-0.05, 0.05))
             self.maxlife = lifetime
