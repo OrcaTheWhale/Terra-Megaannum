@@ -1,5 +1,7 @@
 venv/
 __pycache__/
+builds/
+build_cache/
 *.pyc
 change_map.png
 history.png
