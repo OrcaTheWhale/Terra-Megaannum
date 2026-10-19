@@ -1,5 +1,4 @@
-# MathHacks2.0-Terra Megaannum-
-# Mathhacks2.0 1st Place Winners!
+# MathHacks2.0-Terra Megaannum- 1st Place Winners!
 ### A simulated environment with realistic conditions, over long periods of time to educate about erosion.  
 ![Example](assets/example.gif)
 
